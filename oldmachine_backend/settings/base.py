@@ -35,6 +35,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',  # Serve static files
     'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -101,6 +102,18 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+# WhiteNoise configuration for serving static files
+# This is essential for serverless deployments like Vercel
+# Using CompressedStaticFilesStorage for automatic compression
+# without requiring manifest files (better for serverless)
+STATICFILES_STORAGE = (
+    'whitenoise.storage.CompressedStaticFilesStorage'
+)
+
+# WhiteNoise settings
+WHITENOISE_USE_FINDERS = True  # Auto-discover static files
+WHITENOISE_AUTOREFRESH = True  # Auto-refresh in development
 
 # Media files
 MEDIA_URL = 'media/'
