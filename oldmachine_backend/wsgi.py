@@ -174,10 +174,10 @@ def handler(req, res):
 
 
 # Export application for compatibility (Django expects this)
-# This is lazy-loaded on first access
-application = property(lambda self: get_wsgi_app())
+# This creates a callable that lazy-loads the WSGI app
+class WSGIApplicationWrapper:
+    """Wrapper that lazy-loads Django WSGI application."""
+    def __call__(self, environ, start_response):
+        return get_wsgi_app()(environ, start_response)
 
-# For direct access (if needed)
-def get_application():
-    """Get WSGI application (for compatibility)."""
-    return get_wsgi_app()
+application = WSGIApplicationWrapper()
