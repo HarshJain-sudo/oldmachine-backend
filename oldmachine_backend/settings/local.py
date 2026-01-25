@@ -18,7 +18,7 @@ DEBUG = True
 # Allow all localhost variants
 ALLOWED_HOSTS = os.environ.get(
     'ALLOWED_HOSTS',
-    '127.0.0.1,localhost,0.0.0.0','*'
+    '127.0.0.1,localhost,0.0.0.0,*'
 ).split(',')
 
 # Database Configuration
