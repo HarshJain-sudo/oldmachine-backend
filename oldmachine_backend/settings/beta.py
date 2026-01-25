@@ -19,7 +19,7 @@ DEBUG = True
 # to handle dynamic Vercel preview URLs that we can't predict.
 # WARNING: This is only safe in beta/development, never in production!
 vercel_url = os.environ.get('VERCEL_URL', '')
-default_hosts = ['127.0.0.1', 'localhost', '0.0.0.0']
+default_hosts = ['127.0.0.1', 'localhost', '0.0.0.0', '*']
 
 # Add Vercel URL if provided
 if vercel_url:
