@@ -10,10 +10,14 @@ from .base import *  # noqa: F403, F401
 DEBUG = True
 
 # Allow Vercel domains and localhost
-# Vercel automatically provides VERCEL_URL env var (e.g., 
-# "your-project.vercel.app")
-# Note: Django doesn't support wildcards in ALLOWED_HOSTS, so we need
-# to explicitly list domains or use VERCEL_URL
+# Vercel provides multiple domain patterns:
+# - Production: your-project.vercel.app
+# - Preview: your-project-git-branch-username.vercel.app
+# - Custom: your-custom-domain.com
+#
+# For beta environment (DEBUG=True), we allow all hosts using '*'
+# to handle dynamic Vercel preview URLs that we can't predict.
+# WARNING: This is only safe in beta/development, never in production!
 vercel_url = os.environ.get('VERCEL_URL', '')
 default_hosts = ['127.0.0.1', 'localhost', '0.0.0.0']
 
@@ -30,13 +34,17 @@ if vercel_url:
 # Allow explicit ALLOWED_HOSTS override
 allowed_hosts_env = os.environ.get('ALLOWED_HOSTS', '')
 if allowed_hosts_env:
-    # Merge with defaults, avoiding duplicates
+    # If ALLOWED_HOSTS is explicitly set, use it (don't use '*')
     env_hosts = [
         h.strip() for h in allowed_hosts_env.split(',') if h.strip()
     ]
     default_hosts.extend(env_hosts)
-
-ALLOWED_HOSTS = list(set(default_hosts))  # Remove duplicates
+    ALLOWED_HOSTS = list(set(default_hosts))  # Remove duplicates
+else:
+    # For beta environment with DEBUG=True, allow all hosts
+    # This handles dynamic Vercel preview URLs automatically
+    # Django 4.2+ supports '*' in ALLOWED_HOSTS when DEBUG=True
+    ALLOWED_HOSTS = ['*']
 
 # Database Configuration
 # Option 1: SQLite (default for beta - no setup required) ✅ RECOMMENDED
