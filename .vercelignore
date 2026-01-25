@@ -1,0 +1,23 @@
+# Vercel ignore file
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info
+dist/
+build/
+.env
+.env.local
+db_beta.sqlite3
+*.log
+logs/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
