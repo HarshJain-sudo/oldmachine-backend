@@ -2,19 +2,22 @@
   "version": 2,
   "builds": [
     {
-      "src": "api/index.py",
+      "src": "oldmachine_backend/wsgi.py",
       "use": "@vercel/python"
     }
   ],
   "routes": [
     {
       "src": "/(.*)",
-      "dest": "api/index.py"
+      "dest": "oldmachine_backend/wsgi.py"
     }
   ],
   "functions": {
-    "api/index.py": {
+    "oldmachine_backend/wsgi.py": {
       "maxDuration": 30
     }
+  },
+  "env": {
+    "DJANGO_ENV": "beta"
   }
 }
