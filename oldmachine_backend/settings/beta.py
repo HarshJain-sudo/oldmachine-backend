@@ -58,37 +58,77 @@ else:
 # PostgreSQL Cloud Database (Supabase)
 # IMPORTANT: For Vercel serverless, use Supabase Connection Pooler to avoid IPv6 issues
 # 
-# The error "Cannot assign requested address" is caused by IPv6 connection attempts
-# that Vercel serverless functions don't support well.
-#
-# Solution: Use Supabase Connection Pooler (port 6543)
+# The error "Tenant or user not found" means the connection pooler credentials are wrong.
+# 
+# Solution: Use Supabase Connection Pooler with correct credentials
 # 1. Go to Supabase Dashboard → Settings → Database → Connection Pooling
-# 2. Copy the "Connection Pooler" host (format: aws-0-us-east-1.pooler.supabase.com)
-# 3. Set DB_HOST to the pooler host in Vercel environment variables
-# 4. Set DB_PORT to 6543 in Vercel environment variables
+# 2. Copy the "Connection Pooler" connection string (URI format)
+# 3. Set DATABASE_URL in Vercel environment variables with the full connection string
 #
-# Direct connection (port 5432) may fail with IPv6 on Vercel serverless
+# OR use individual variables (see format below)
 
-db_host = os.environ.get('DB_HOST', 'db.wdcczvjigwrvdhzzpjwl.supabase.co')
-db_port = os.environ.get('DB_PORT', '5432')
+# Try to use connection string first (recommended for pooler)
+database_url = os.environ.get('DATABASE_URL')
+if database_url:
+    # Parse connection string from Supabase Connection Pooler
+    from urllib.parse import urlparse, unquote
+    
+    try:
+        parsed = urlparse(database_url)
+        # Extract password (may be URL encoded)
+        password = unquote(parsed.password) if parsed.password else ''
+        
+        DATABASES = {
+            'default': {
+                'ENGINE': 'django.db.backends.postgresql',
+                'NAME': parsed.path[1:] if parsed.path else 'postgres',  # Remove leading /
+                'USER': parsed.username,
+                'PASSWORD': password,
+                'HOST': parsed.hostname,
+                'PORT': parsed.port or 6543,
+                'OPTIONS': {
+                    'connect_timeout': 10,
+                    'sslmode': 'require',  # Required for Supabase
+                },
+                'CONN_MAX_AGE': 0,  # Disable persistent connections for serverless
+            }
+        }
+    except Exception as e:
+        # If parsing fails, fall back to individual variables
+        print(f"Warning: Could not parse DATABASE_URL: {e}")
+        database_url = None
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.environ.get('DB_NAME', 'postgres'),
-        'USER': os.environ.get('DB_USER', 'postgres'),
-        'PASSWORD': os.environ.get('DB_PASSWORD', '4Bth38seXu/S@x@'),
-        'HOST': db_host,
-        'PORT': db_port,
-        'OPTIONS': {
-            'connect_timeout': 10,
-            'sslmode': 'require',  # Required for Supabase
-        },
-        # Disable persistent connections for serverless (critical!)
-        # Serverless functions should close connections after each request
-        'CONN_MAX_AGE': 0,
+# Fall back to individual variables if DATABASE_URL not set
+if not database_url:
+    db_host = os.environ.get('DB_HOST', 'db.wdcczvjigwrvdhzzpjwl.supabase.co')
+    db_port = os.environ.get('DB_PORT', '5432')
+    db_name = os.environ.get('DB_NAME', 'postgres')
+    db_user = os.environ.get('DB_USER', 'postgres')
+    db_password = os.environ.get('DB_PASSWORD', '4Bth38seXu/S@x@')
+    
+    # For connection pooler, user format is usually: postgres.[PROJECT-REF]
+    # If DB_USER doesn't contain a dot and we're using pooler port, add project ref
+    if db_port == '6543' and '.' not in db_user:
+        # Try to extract project ref from host if it's the direct connection host
+        if 'db.' in db_host and '.supabase.co' in db_host:
+            project_ref = db_host.replace('db.', '').replace('.supabase.co', '')
+            db_user = f'postgres.{project_ref}'
+    
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': db_name,
+            'USER': db_user,
+            'PASSWORD': db_password,
+            'HOST': db_host,
+            'PORT': db_port,
+            'OPTIONS': {
+                'connect_timeout': 10,
+                'sslmode': 'require',  # Required for Supabase
+            },
+            'CONN_MAX_AGE': 0,  # Disable persistent connections for serverless
+        }
     }
-}
 
 # SQLite Database (Fallback - Uncomment to use SQLite instead)
 # DATABASES = {
