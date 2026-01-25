@@ -12,11 +12,6 @@
       "dest": "oldmachine_backend/wsgi.py"
     }
   ],
-  "functions": {
-    "oldmachine_backend/wsgi.py": {
-      "maxDuration": 30
-    }
-  },
   "env": {
     "DJANGO_ENV": "beta"
   }
