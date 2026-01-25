@@ -32,6 +32,7 @@ ENV/
 *.pyc
 db.sqlite3
 db_beta.sqlite3
+db_local.sqlite3
 media/
 staticfiles/
 
