@@ -56,18 +56,37 @@ else:
 # To switch back to SQLite, comment PostgreSQL and uncomment SQLite below
 
 # PostgreSQL Cloud Database (Supabase)
+# IMPORTANT: For Vercel serverless, use Supabase Connection Pooler to avoid IPv6 issues
+# 
+# The error "Cannot assign requested address" is caused by IPv6 connection attempts
+# that Vercel serverless functions don't support well.
+#
+# Solution: Use Supabase Connection Pooler (port 6543)
+# 1. Go to Supabase Dashboard → Settings → Database → Connection Pooling
+# 2. Copy the "Connection Pooler" host (format: aws-0-us-east-1.pooler.supabase.com)
+# 3. Set DB_HOST to the pooler host in Vercel environment variables
+# 4. Set DB_PORT to 6543 in Vercel environment variables
+#
+# Direct connection (port 5432) may fail with IPv6 on Vercel serverless
+
+db_host = os.environ.get('DB_HOST', 'db.wdcczvjigwrvdhzzpjwl.supabase.co')
+db_port = os.environ.get('DB_PORT', '5432')
+
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
         'NAME': os.environ.get('DB_NAME', 'postgres'),
         'USER': os.environ.get('DB_USER', 'postgres'),
         'PASSWORD': os.environ.get('DB_PASSWORD', '4Bth38seXu/S@x@'),
-        'HOST': os.environ.get('DB_HOST', 'db.wdcczvjigwrvdhzzpjwl.supabase.co'),
-        'PORT': os.environ.get('DB_PORT', '5432'),
+        'HOST': db_host,
+        'PORT': db_port,
         'OPTIONS': {
             'connect_timeout': 10,
             'sslmode': 'require',  # Required for Supabase
         },
+        # Disable persistent connections for serverless (critical!)
+        # Serverless functions should close connections after each request
+        'CONN_MAX_AGE': 0,
     }
 }
 
