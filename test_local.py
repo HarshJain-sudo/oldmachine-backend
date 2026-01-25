@@ -241,7 +241,7 @@ def test_get_product_details(product_code: str = "PROD001") -> bool:
     url = f"{BASE_URL}/product_details/get/v1/{product_code}/"
     
     print_info(f"GET {url}")
-    
+
     try:
         response = requests.get(url, headers=HEADERS, timeout=10)
         
