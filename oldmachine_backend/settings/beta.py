@@ -10,10 +10,33 @@ from .base import *  # noqa: F403, F401
 DEBUG = True
 
 # Allow Vercel domains and localhost
-ALLOWED_HOSTS = os.environ.get(
-    'ALLOWED_HOSTS',
-    '127.0.0.1,localhost,0.0.0.0'
-).split(',')
+# Vercel automatically provides VERCEL_URL env var (e.g., 
+# "your-project.vercel.app")
+# Note: Django doesn't support wildcards in ALLOWED_HOSTS, so we need
+# to explicitly list domains or use VERCEL_URL
+vercel_url = os.environ.get('VERCEL_URL', '')
+default_hosts = ['127.0.0.1', 'localhost', '0.0.0.0']
+
+# Add Vercel URL if provided
+if vercel_url:
+    # VERCEL_URL might include protocol, extract just the domain
+    if '://' in vercel_url:
+        vercel_url = vercel_url.split('://')[1]
+    # Remove port if present
+    if ':' in vercel_url:
+        vercel_url = vercel_url.split(':')[0]
+    default_hosts.append(vercel_url)
+
+# Allow explicit ALLOWED_HOSTS override
+allowed_hosts_env = os.environ.get('ALLOWED_HOSTS', '')
+if allowed_hosts_env:
+    # Merge with defaults, avoiding duplicates
+    env_hosts = [
+        h.strip() for h in allowed_hosts_env.split(',') if h.strip()
+    ]
+    default_hosts.extend(env_hosts)
+
+ALLOWED_HOSTS = list(set(default_hosts))  # Remove duplicates
 
 # Database Configuration
 # Option 1: SQLite (default for beta - no setup required) ✅ RECOMMENDED
