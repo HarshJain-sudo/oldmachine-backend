@@ -32,6 +32,7 @@ INSTALLED_APPS = [
     # Local apps
     'olmachine_users',
     'olmachine_products',
+    'olmachine_seller_portal',
 ]
 
 MIDDLEWARE = [

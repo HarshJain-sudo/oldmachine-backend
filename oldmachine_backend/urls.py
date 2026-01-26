@@ -30,6 +30,10 @@ schema_view = get_schema_view(
     patterns=[
         path('api/marketplace/', include('olmachine_users.urls')),
         path('api/marketplace/', include('olmachine_products.urls')),
+        path(
+            'api/seller-portal/',
+            include('olmachine_seller_portal.urls')
+        ),
     ],
 )
 
@@ -37,6 +41,10 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/marketplace/', include('olmachine_users.urls')),
     path('api/marketplace/', include('olmachine_products.urls')),
+    path(
+        'api/seller-portal/',
+        include('olmachine_seller_portal.urls')
+    ),
     path('o/', include('oauth2_provider.urls', namespace='oauth2_provider')),
     
     # Swagger/OpenAPI URLs
