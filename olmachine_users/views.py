@@ -6,6 +6,8 @@ import logging
 from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny
+from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
 from django.db import transaction
 from olmachine_users.serializers import (
     LoginOrSignUpSerializer,
@@ -31,6 +33,34 @@ class LoginOrSignUpView(APIView):
 
     permission_classes = [AllowAny]
 
+    @swagger_auto_schema(
+        operation_summary="Login or Sign Up",
+        operation_description=(
+            "Initiate login or sign up process by sending phone number. "
+            "An OTP will be sent to the provided phone number for verification."
+        ),
+        request_body=LoginOrSignUpSerializer,
+        responses={
+            200: openapi.Response(
+                description="OTP sent successfully",
+                examples={
+                    "application/json": {
+                        "data": {
+                            "user_id": "uuid-string",
+                            "message": "OTP sent successfully"
+                        }
+                    }
+                }
+            ),
+            400: openapi.Response(
+                description="Bad request - Invalid phone number or country code"
+            ),
+            500: openapi.Response(
+                description="Internal server error"
+            ),
+        },
+        tags=['Authentication']
+    )
     def post(self, request):
         """
         Handle login or sign up request.
@@ -104,6 +134,37 @@ class VerifyOTPView(APIView):
 
     permission_classes = [AllowAny]
 
+    @swagger_auto_schema(
+        operation_summary="Verify OTP and get access token",
+        operation_description=(
+            "Verify the OTP code sent to the phone number. "
+            "Upon successful verification, returns OAuth2 access token "
+            "and refresh token for API authentication."
+        ),
+        request_body=VerifyOTPSerializer,
+        responses={
+            200: openapi.Response(
+                description="OTP verified successfully",
+                examples={
+                    "application/json": {
+                        "data": {
+                            "access_token": "token-string",
+                            "refresh_token": "refresh-token-string",
+                            "token_type": "Bearer",
+                            "expires_in": 86400
+                        }
+                    }
+                }
+            ),
+            400: openapi.Response(
+                description="Bad request - Invalid or expired OTP"
+            ),
+            500: openapi.Response(
+                description="Internal server error"
+            ),
+        },
+        tags=['Authentication']
+    )
     def post(self, request):
         """
         Handle OTP verification request.

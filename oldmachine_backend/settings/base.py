@@ -28,6 +28,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'oauth2_provider',
     'corsheaders',
+    'drf_yasg',
     # Local apps
     'olmachine_users',
     'olmachine_products',
@@ -164,4 +165,50 @@ CORS_ALLOW_CREDENTIALS = True
 
 # Custom User Model
 AUTH_USER_MODEL = 'olmachine_users.User'
+
+# Swagger/OpenAPI Settings
+SWAGGER_SETTINGS = {
+    'SECURITY_DEFINITIONS': {
+        'Bearer': {
+            'type': 'apiKey',
+            'name': 'Authorization',
+            'in': 'header',
+            'description': (
+                'JWT/Token authentication. '
+                'Format: "Bearer {token}" or "Bearer {access_token}"'
+            )
+        },
+        'OAuth2': {
+            'type': 'oauth2',
+            'flow': 'password',
+            'tokenUrl': '/o/token/',
+            'scopes': {
+                'read': 'Read scope',
+                'write': 'Write scope',
+            }
+        }
+    },
+    'USE_SESSION_AUTH': False,
+    'JSON_EDITOR': True,
+    'SUPPORTED_SUBMIT_METHODS': [
+        'get',
+        'post',
+        'put',
+        'delete',
+        'patch'
+    ],
+    'OPERATIONS_SORTER': 'alpha',
+    'TAGS_SORTER': 'alpha',
+    'DOC_EXPANSION': 'list',  # Show endpoints expanded by default
+    'DEEP_LINKING': True,
+    'SHOW_EXTENSIONS': True,
+    'DEFAULT_MODEL_RENDERING': 'example'
+}
+
+REDOC_SETTINGS = {
+    'LAZY_RENDERING': False,
+    'HIDE_HOSTNAME': False,
+    'EXPAND_RESPONSES': '200,201',
+    'PATH_IN_MIDDLE': True,
+}
 

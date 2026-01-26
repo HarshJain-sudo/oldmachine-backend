@@ -11,6 +11,9 @@ from olmachine_products.models import (
     Seller,
     Location
 )
+from olmachine_products.services.recommendation_service import (
+    RecommendationService
+)
 
 
 class ProductDetailSerializer(serializers.ModelSerializer):
@@ -184,4 +187,13 @@ class ProductDetailsSerializer(serializers.ModelSerializer):
     def get_price(self, obj):
         """Get price as string."""
         return str(obj.price) if obj.price else None
+
+
+class RecommendedCategorySerializer(serializers.Serializer):
+    """Serializer for recommended category with products."""
+
+    category_name = serializers.CharField()
+    category_code = serializers.CharField()
+    category_image_url = serializers.URLField(allow_null=True)
+    products = ProductDetailSerializer(many=True)
 

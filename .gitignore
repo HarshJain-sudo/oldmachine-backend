@@ -41,6 +41,9 @@ staticfiles/
 .env.local
 .env.*.local
 
+# Ignore anything starting with "env"
+env*
+
 # IDE
 .vscode/
 .idea/

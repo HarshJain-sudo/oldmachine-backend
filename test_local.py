@@ -14,7 +14,7 @@ import sys
 from typing import Dict, Any, Optional
 
 # Configuration
-BASE_URL = "http://127.0.0.1:8000/api/marketplace"
+BASE_URL = "https://oldmachine-backend.vercel.app/api/marketplace"
 HEADERS = {"Content-Type": "application/json"}
 
 # Colors for terminal output

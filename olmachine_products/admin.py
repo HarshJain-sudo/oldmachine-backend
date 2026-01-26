@@ -7,7 +7,8 @@ from .models import (
     Location,
     Product,
     ProductImage,
-    ProductSpecification
+    ProductSpecification,
+    UserCategoryView
 )
 
 
@@ -100,4 +101,20 @@ class ProductSpecificationAdmin(admin.ModelAdmin):
     list_display = ('product', 'key', 'value', 'created_at')
     list_filter = ('created_at',)
     search_fields = ('product__name', 'key', 'value')
+
+
+@admin.register(UserCategoryView)
+class UserCategoryViewAdmin(admin.ModelAdmin):
+    """Admin interface for UserCategoryView model."""
+
+    list_display = ('user', 'category', 'viewed_at', 'updated_at')
+    list_filter = ('viewed_at', 'category')
+    search_fields = (
+        'user__phone_number',
+        'user__username',
+        'category__name',
+        'category__category_code'
+    )
+    readonly_fields = ('viewed_at', 'updated_at')
+    ordering = ('-viewed_at',)
 

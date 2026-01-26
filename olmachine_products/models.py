@@ -5,6 +5,7 @@ Product models for olmachine_products app.
 import uuid
 from django.db import models
 from django.core.validators import MinValueValidator, MaxValueValidator
+from django.conf import settings
 
 
 class Category(models.Model):
@@ -207,4 +208,42 @@ class ProductSpecification(models.Model):
     def __str__(self):
         """String representation of product specification."""
         return f"{self.product.name} - {self.key}: {self.value}"
+
+
+class UserCategoryView(models.Model):
+    """
+    Model to track user's recently viewed categories.
+    Stores last 3 categories viewed by each user.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='category_views'
+    )
+    category = models.ForeignKey(
+        Category,
+        on_delete=models.CASCADE,
+        related_name='user_views'
+    )
+    viewed_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Meta options for UserCategoryView."""
+
+        db_table = 'user_category_views'
+        verbose_name = 'User Category View'
+        verbose_name_plural = 'User Category Views'
+        ordering = ['-viewed_at']
+        indexes = [
+            models.Index(fields=['user', '-viewed_at']),
+            models.Index(fields=['category']),
+        ]
+        unique_together = [['user', 'category']]
+
+    def __str__(self):
+        """String representation of user category view."""
+        return f"{self.user.phone_number} viewed {self.category.name}"
 
