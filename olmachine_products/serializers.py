@@ -42,25 +42,34 @@ class ProductDetailSerializer(serializers.ModelSerializer):
 
 
 class CategoryDetailSerializer(serializers.ModelSerializer):
-    """Serializer for category details with products."""
+    """Serializer for category details with hierarchy info."""
 
-    products_details = ProductDetailSerializer(
-        source='products',
-        many=True,
-        read_only=True
+    parent_category = serializers.CharField(
+        source='parent_category.category_code',
+        read_only=True,
+        allow_null=True
     )
+    parent_category_name = serializers.CharField(
+        source='parent_category.name',
+        read_only=True,
+        allow_null=True
+    )
+    id = serializers.UUIDField(read_only=True)
 
     class Meta:
         """Meta options for CategoryDetailSerializer."""
 
         model = Category
         fields = [
+            'id',
             'name',
             'category_code',
             'description',
+            'level',
+            'parent_category',
+            'parent_category_name',
             'order',
-            'image_url',
-            'products_details'
+            'image_url'
         ]
 
 

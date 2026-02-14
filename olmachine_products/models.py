@@ -9,12 +9,24 @@ from django.conf import settings
 
 
 class Category(models.Model):
-    """Category model for product categorization."""
+    """Category model for product categorization with hierarchical support."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=255)
     category_code = models.CharField(max_length=50, unique=True)
     description = models.TextField(blank=True, null=True)
+    parent_category = models.ForeignKey(
+        'self',
+        on_delete=models.CASCADE,
+        related_name='sub_categories',
+        null=True,
+        blank=True,
+        help_text="Parent category (null for top-level categories)"
+    )
+    level = models.IntegerField(
+        default=0,
+        help_text="Depth level in hierarchy (0 = top level)"
+    )
     order = models.IntegerField(
         default=0,
         help_text="Display order of category"
@@ -30,15 +42,86 @@ class Category(models.Model):
         db_table = 'categories'
         verbose_name = 'Category'
         verbose_name_plural = 'Categories'
-        ordering = ['order', 'name']
+        ordering = ['level', 'order', 'name']
         indexes = [
             models.Index(fields=['category_code']),
+            models.Index(fields=['parent_category', 'is_active', 'order']),
+            models.Index(fields=['level', 'is_active']),
             models.Index(fields=['is_active', 'order']),
         ]
 
     def __str__(self):
         """String representation of category."""
         return f"{self.name} ({self.category_code})"
+
+    def save(self, *args, **kwargs):
+        """Override save to auto-calculate level."""
+        if self.parent_category:
+            self.level = self.parent_category.level + 1
+        else:
+            self.level = 0
+        super().save(*args, **kwargs)
+
+    def get_ancestors(self):
+        """
+        Get all parent categories up to root.
+
+        Returns:
+            QuerySet: All ancestor categories ordered from root to parent
+        """
+        ancestors = []
+        current = self.parent_category
+        while current:
+            ancestors.insert(0, current)
+            current = current.parent_category
+        return ancestors
+
+    def get_descendants(self):
+        """
+        Get all child categories recursively.
+
+        Returns:
+            QuerySet: All descendant categories
+        """
+        descendants = list(self.sub_categories.all())
+        for child in self.sub_categories.all():
+            descendants.extend(child.get_descendants())
+        return descendants
+
+    def get_all_descendant_ids(self):
+        """
+        Get all descendant category IDs including self.
+
+        Returns:
+            list: List of category IDs
+        """
+        ids = [self.id]
+        for child in self.sub_categories.filter(is_active=True):
+            ids.extend(child.get_all_descendant_ids())
+        return ids
+
+    def is_leaf_category(self):
+        """
+        Check if category has no children.
+
+        Returns:
+            bool: True if category has no active sub-categories
+        """
+        return not self.sub_categories.filter(is_active=True).exists()
+
+    def get_full_path(self):
+        """
+        Get full category path as string.
+
+        Returns:
+            str: Full path like "Electronics > Mobile Phones > Smartphones"
+        """
+        path = [self.name]
+        current = self.parent_category
+        while current:
+            path.insert(0, current.name)
+            current = current.parent_category
+        return ' > '.join(path)
 
 
 class Seller(models.Model):

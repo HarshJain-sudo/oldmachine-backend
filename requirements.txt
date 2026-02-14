@@ -7,6 +7,7 @@ python-decouple==3.8
 python-dotenv==1.0.0
 whitenoise==6.6.0
 drf-yasg==1.21.7
-setuptools>=65.0.0
+# Keep <70 so pkg_resources remains available (drf_yasg uses it; removed in setuptools 82)
+setuptools>=60,<70
 
 requests==2.31.0

@@ -42,9 +42,9 @@ class CategoriesDetailsView(APIView):
     permission_classes = [AllowAnyOrValidToken]
 
     @swagger_auto_schema(
-        operation_summary="Get categories with products and recommendations",
+        operation_summary="Get categories with hierarchy and recommendations",
         operation_description=(
-            "Retrieve a list of active categories with their products. "
+            "Retrieve a list of active categories with hierarchy information. "
             "If a valid access token is provided, personalized "
             "recommendations based on user's viewing history will be "
             "included. Returns 401 if an invalid access token is provided."
@@ -76,22 +76,28 @@ class CategoriesDetailsView(APIView):
                 description="Successfully retrieved categories",
                 examples={
                     "application/json": {
-                        "data": {
-                            "categories_details": [
+                        "categories_details": [
                                 {
-                                    "name": "Category Name",
-                                    "category_code": "CAT001",
+                                    "id": "uuid-string",
+                                    "name": "Electronics",
+                                    "category_code": "ELEC001",
                                     "description": "Category description",
+                                    "level": 0,
+                                    "parent_category": None,
+                                    "parent_category_name": None,
                                     "order": 1,
-                                    "image_url": "https://example.com/image.jpg",
-                                    "products_details": [
-                                        {
-                                            "name": "Product Name",
-                                            "product_code": "PROD001",
-                                            "image_url": "https://example.com/product.jpg",
-                                            "extra_config": "Key: Value"
-                                        }
-                                    ]
+                                    "image_url": "https://example.com/image.jpg"
+                                },
+                                {
+                                    "id": "uuid-string",
+                                    "name": "Mobile Phones",
+                                    "category_code": "MOB001",
+                                    "description": "Mobile phone category",
+                                    "level": 1,
+                                    "parent_category": "ELEC001",
+                                    "parent_category_name": "Electronics",
+                                    "order": 1,
+                                    "image_url": "https://example.com/mobile.jpg"
                                 }
                             ],
                             "recommended_products": [
@@ -108,7 +114,6 @@ class CategoriesDetailsView(APIView):
                                     ]
                                 }
                             ]
-                        }
                     }
                 }
             ),
@@ -171,15 +176,12 @@ class CategoriesDetailsView(APIView):
             )
 
         try:
-            # Get active categories with products
+            # Get active categories (no products needed)
             categories = Category.objects.filter(
                 is_active=True
-            ).prefetch_related(
-                'products__images',
-                'products__specifications'
-            ).filter(
-                products__is_active=True
-            ).distinct().order_by('order', 'name')[offset:offset + limit]
+            ).select_related(
+                'parent_category'
+            ).order_by('level', 'order', 'name')[offset:offset + limit]
 
             serializer = CategoryDetailSerializer(categories, many=True)
 
@@ -209,13 +211,11 @@ class CategoriesDetailsView(APIView):
                         'products': product_serializer.data
                     })
 
-            response_data = {
-                'categories_details': serializer.data,
-                'recommended_products': recommended_products
-            }
-
             return success_response(
-                data=response_data,
+                data={
+                    'categories_details': serializer.data,
+                    'recommended_products': recommended_products
+                },
                 http_status_code=status.HTTP_200_OK
             )
 
@@ -395,12 +395,33 @@ class CategoryProductsDetailsView(APIView):
                 )
 
             # Get products for category
+            # If category has children, include products from all descendant leaf categories
+            if category.is_leaf_category():
+                # Leaf category - get products directly assigned
+                product_categories = [category]
+            else:
+                # Parent category - get all descendant leaf categories
+                descendant_ids = category.get_all_descendant_ids()
+                # Get all categories in the descendant tree
+                all_descendants = Category.objects.filter(
+                    id__in=descendant_ids,
+                    is_active=True
+                )
+                # Filter to only leaf categories (those with no active children)
+                leaf_categories = [
+                    cat for cat in all_descendants
+                    if cat.is_leaf_category()
+                ]
+                product_categories = leaf_categories if leaf_categories else [category]
+
+            # Get products from all relevant categories
             products = Product.objects.filter(
-                category=category,
+                category__in=product_categories,
                 is_active=True
             ).select_related(
                 'seller',
-                'location'
+                'location',
+                'category'
             ).prefetch_related(
                 'images',
                 'specifications'
@@ -408,7 +429,7 @@ class CategoryProductsDetailsView(APIView):
 
             # Get total count
             total_count = Product.objects.filter(
-                category=category,
+                category__in=product_categories,
                 is_active=True
             ).count()
 

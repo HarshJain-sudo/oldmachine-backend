@@ -5,115 +5,31 @@ Serializers for olmachine_seller_portal app.
 from rest_framework import serializers
 from olmachine_seller_portal.models import (
     CategoryFormConfig,
-    FormField,
     SellerProfile,
     SellerProduct,
     ProductApproval
 )
-from olmachine_products.models import Category, Product, Location
-from olmachine_products.serializers import (
-    CategoryDetailSerializer,
-    ProductDetailsSerializer
-)
-
-
-class FormFieldSerializer(serializers.ModelSerializer):
-    """Serializer for form field configuration."""
-
-    class Meta:
-        """Meta options for FormFieldSerializer."""
-
-        model = FormField
-        fields = [
-            'id',
-            'field_name',
-            'field_label',
-            'field_type',
-            'is_required',
-            'placeholder',
-            'help_text',
-            'default_value',
-            'validation_rules',
-            'options',
-            'order'
-        ]
+from olmachine_products.models import Category
+from olmachine_products.serializers import ProductDetailsSerializer
 
 
 class CategoryFormConfigSerializer(serializers.ModelSerializer):
-    """Serializer for category form configuration."""
+    """Read-only serializer for form config (schema for frontend)."""
 
-    fields = FormFieldSerializer(many=True, read_only=True)
-    category_name = serializers.CharField(
-        source='category.name',
-        read_only=True
-    )
-    category_code = serializers.CharField(
-        source='category.category_code',
-        read_only=True
-    )
+    category_code = serializers.CharField(source='category.category_code', read_only=True)
+    category_name = serializers.CharField(source='category.name', read_only=True)
 
     class Meta:
-        """Meta options for CategoryFormConfigSerializer."""
-
         model = CategoryFormConfig
-        fields = [
-            'id',
-            'category',
-            'category_name',
-            'category_code',
-            'is_active',
-            'fields',
-            'created_at',
-            'updated_at'
-        ]
+        fields = ['id', 'category', 'category_code', 'category_name', 'is_active', 'schema']
 
 
 class CategoryFormConfigCreateSerializer(serializers.ModelSerializer):
-    """Serializer for creating category form configuration with fields."""
-
-    fields = FormFieldSerializer(many=True)
+    """Create/update form config (admin)."""
 
     class Meta:
-        """Meta options for CategoryFormConfigCreateSerializer."""
-
         model = CategoryFormConfig
-        fields = ['category', 'is_active', 'fields']
-
-    def create(self, validated_data):
-        """Create form config with fields."""
-        fields_data = validated_data.pop('fields')
-        form_config = CategoryFormConfig.objects.create(**validated_data)
-
-        for field_data in fields_data:
-            FormField.objects.create(
-                form_config=form_config,
-                **field_data
-            )
-
-        return form_config
-
-    def update(self, instance, validated_data):
-        """Update form config with fields."""
-        fields_data = validated_data.pop('fields', None)
-
-        instance.is_active = validated_data.get(
-            'is_active',
-            instance.is_active
-        )
-        instance.save()
-
-        if fields_data is not None:
-            # Delete existing fields
-            instance.fields.all().delete()
-
-            # Create new fields
-            for field_data in fields_data:
-                FormField.objects.create(
-                    form_config=instance,
-                    **field_data
-                )
-
-        return instance
+        fields = ['category', 'is_active', 'schema']
 
 
 class SellerProfileSerializer(serializers.ModelSerializer):
@@ -156,43 +72,6 @@ class SellerProfileSerializer(serializers.ModelSerializer):
         return None
 
 
-class ProductFormDataSerializer(serializers.Serializer):
-    """Serializer for product form data from seller."""
-
-    # Common fields that might be in form
-    name = serializers.CharField(required=False)
-    description = serializers.CharField(required=False, allow_blank=True)
-    price = serializers.DecimalField(
-        max_digits=12,
-        decimal_places=2,
-        required=False,
-        allow_null=True
-    )
-    currency = serializers.CharField(
-        max_length=10,
-        default='INR',
-        required=False
-    )
-    tag = serializers.CharField(
-        max_length=100,
-        required=False,
-        allow_blank=True,
-        allow_null=True
-    )
-    availability = serializers.CharField(
-        max_length=50,
-        default='In Stock',
-        required=False
-    )
-
-    # Dynamic fields will be stored as JSON
-    def to_representation(self, instance):
-        """Return form data as dictionary."""
-        if isinstance(instance, dict):
-            return instance
-        return super().to_representation(instance)
-
-
 class SellerProductSerializer(serializers.ModelSerializer):
     """Serializer for seller product."""
 
@@ -208,7 +87,7 @@ class SellerProductSerializer(serializers.ModelSerializer):
         source='approved_by.username',
         read_only=True
     )
-    form_data = serializers.JSONField()
+    extra_info = serializers.JSONField()
 
     class Meta:
         """Meta options for SellerProductSerializer."""
@@ -225,7 +104,7 @@ class SellerProductSerializer(serializers.ModelSerializer):
             'approved_by',
             'approved_by_name',
             'approved_at',
-            'form_data',
+            'extra_info',
             'created_at',
             'updated_at'
         ]
@@ -242,27 +121,43 @@ class SellerProductCreateSerializer(serializers.Serializer):
     """Serializer for creating seller product."""
 
     category_code = serializers.CharField(required=True)
-    form_data = serializers.JSONField(required=True)
+    name = serializers.CharField(required=True)
+    description = serializers.CharField(required=False, allow_blank=True)
+    price = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        required=False,
+        allow_null=True
+    )
+    currency = serializers.CharField(max_length=10, default='INR', required=False)
+    tag = serializers.CharField(
+        max_length=100,
+        required=False,
+        allow_blank=True,
+        allow_null=True
+    )
+    availability = serializers.CharField(
+        max_length=50,
+        default='In Stock',
+        required=False
+    )
+    extra_info = serializers.JSONField(required=False, default=dict)
     location = serializers.DictField(
         child=serializers.CharField(),
         required=False
     )
 
     def validate_category_code(self, value):
-        """Validate category code."""
+        """Validate category code exists and is leaf."""
         try:
             category = Category.objects.get(
                 category_code=value,
                 is_active=True
             )
-            # Check if form config exists
-            if not hasattr(category, 'form_config'):
+            if not category.is_leaf_category():
                 raise serializers.ValidationError(
-                    f"No form configuration found for category {value}"
-                )
-            if not category.form_config.is_active:
-                raise serializers.ValidationError(
-                    f"Form is not active for category {value}"
+                    "Products can only be listed under a leaf category. "
+                    "Please select the final sub-category."
                 )
             return value
         except Category.DoesNotExist:
@@ -270,13 +165,42 @@ class SellerProductCreateSerializer(serializers.Serializer):
                 f"Category {value} does not exist"
             )
 
-    def validate_form_data(self, value):
-        """Validate form data."""
-        if not isinstance(value, dict):
+    def validate_extra_info(self, value):
+        """Validate extra_info is a dictionary."""
+        if value is not None and not isinstance(value, dict):
             raise serializers.ValidationError(
-                "Form data must be a dictionary"
+                "extra_info must be a dictionary"
             )
-        return value
+        return value or {}
+
+    def validate(self, attrs):
+        """If category has form config, ensure required schema fields are in extra_info."""
+        from olmachine_seller_portal.models import CategoryFormConfig
+        category_code = attrs.get('category_code')
+        extra_info = attrs.get('extra_info') or {}
+        try:
+            config = CategoryFormConfig.objects.get(
+                category__category_code=category_code,
+                is_active=True
+            )
+        except CategoryFormConfig.DoesNotExist:
+            return attrs
+        schema = config.schema or []
+        for field in schema:
+            if field.get('is_required') and not field.get('field_name'):
+                continue
+            name = field.get('field_name')
+            if not name:
+                continue
+            if field.get('is_required'):
+                val = extra_info.get(name)
+                if val is None or val == '' or (isinstance(val, list) and len(val) == 0):
+                    label = field.get('field_label') or name
+                    raise serializers.ValidationError({
+                        'extra_info': f"'{label}' is required."
+                    }
+                    )
+        return attrs
 
 
 class ProductApprovalSerializer(serializers.ModelSerializer):

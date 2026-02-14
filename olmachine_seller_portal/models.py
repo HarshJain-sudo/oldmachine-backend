@@ -3,17 +3,21 @@ Models for olmachine_seller_portal app.
 """
 
 import uuid
-import json
 from django.db import models
 from django.conf import settings
-from django.core.validators import MinValueValidator, MaxValueValidator
 from olmachine_products.models import Category, Seller, Product, ProductImage
+
+
+# Max depth for category tree in seller portal (root = 0, so levels 0..4 = 5 levels)
+MAX_CATEGORY_DEPTH = 5
 
 
 class CategoryFormConfig(models.Model):
     """
-    Form configuration for each category.
-    Each category can have one form configuration.
+    Form configuration for a category (leaf only).
+    schema: JSON array of field definitions for frontend to render the form.
+    Example: [{"field_name": "brand", "field_label": "Brand", "field_type": "text",
+               "is_required": true, "order": 1, "options": []}]
     """
 
     id = models.UUIDField(
@@ -30,12 +34,17 @@ class CategoryFormConfig(models.Model):
         default=True,
         help_text="Enable/disable form for this category"
     )
+    schema = models.JSONField(
+        default=list,
+        help_text=(
+            "Form schema for frontend: array of "
+            "{field_name, field_label, field_type, is_required, order, options, ...}"
+        )
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        """Meta options for CategoryFormConfig."""
-
         db_table = 'category_form_configs'
         verbose_name = 'Category Form Configuration'
         verbose_name_plural = 'Category Form Configurations'
@@ -44,101 +53,7 @@ class CategoryFormConfig(models.Model):
         ]
 
     def __str__(self):
-        """String representation of category form config."""
         return f"Form Config for {self.category.name}"
-
-
-class FormField(models.Model):
-    """
-    Individual field configuration within a form.
-    """
-
-    FIELD_TYPE_CHOICES = [
-        ('text', 'Text'),
-        ('number', 'Number'),
-        ('textarea', 'Textarea'),
-        ('select', 'Select'),
-        ('radio', 'Radio'),
-        ('checkbox', 'Checkbox'),
-        ('file', 'File'),
-        ('date', 'Date'),
-        ('email', 'Email'),
-        ('url', 'URL'),
-    ]
-
-    id = models.UUIDField(
-        primary_key=True,
-        default=uuid.uuid4,
-        editable=False
-    )
-    form_config = models.ForeignKey(
-        CategoryFormConfig,
-        on_delete=models.CASCADE,
-        related_name='fields'
-    )
-    field_name = models.CharField(
-        max_length=100,
-        help_text="Internal field name (e.g., 'brand', 'model')"
-    )
-    field_label = models.CharField(
-        max_length=255,
-        help_text="Display label (e.g., 'Brand Name')"
-    )
-    field_type = models.CharField(
-        max_length=20,
-        choices=FIELD_TYPE_CHOICES,
-        default='text'
-    )
-    is_required = models.BooleanField(default=False)
-    placeholder = models.CharField(
-        max_length=255,
-        blank=True,
-        null=True
-    )
-    help_text = models.TextField(blank=True, null=True)
-    default_value = models.CharField(
-        max_length=255,
-        blank=True,
-        null=True
-    )
-    validation_rules = models.JSONField(
-        default=dict,
-        blank=True,
-        help_text=(
-            "Validation rules: "
-            "{'min_length': 5, 'max_length': 100, 'regex': 'pattern'}"
-        )
-    )
-    options = models.JSONField(
-        default=list,
-        blank=True,
-        help_text=(
-            "For select/radio: "
-            "[{'value': 'option1', 'label': 'Option 1'}]"
-        )
-    )
-    order = models.IntegerField(
-        default=0,
-        help_text="Display order of field"
-    )
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        """Meta options for FormField."""
-
-        db_table = 'form_fields'
-        verbose_name = 'Form Field'
-        verbose_name_plural = 'Form Fields'
-        ordering = ['order', 'field_label']
-        indexes = [
-            models.Index(fields=['form_config', 'order']),
-        ]
-        unique_together = [['form_config', 'field_name']]
-
-    def __str__(self):
-        """String representation of form field."""
-        return f"{self.field_label} ({self.field_type})"
 
 
 class SellerProfile(models.Model):
@@ -229,9 +144,10 @@ class SellerProduct(models.Model):
         blank=True
     )
     approved_at = models.DateTimeField(null=True, blank=True)
-    form_data = models.JSONField(
+    extra_info = models.JSONField(
         default=dict,
-        help_text="Store all form field values as JSON"
+        blank=True,
+        help_text="Extra product information as key-value JSON"
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

@@ -3,18 +3,16 @@ Service for seller product creation and management.
 """
 
 import logging
-import uuid
 from django.db import transaction
-from django.utils import timezone
 from olmachine_products.models import (
     Category,
     Product,
     Location,
     ProductImage,
+    ProductSpecification,
     Seller
 )
 from olmachine_seller_portal.models import SellerProduct
-from olmachine_seller_portal.services.form_service import FormService
 
 logger = logging.getLogger(__name__)
 
@@ -26,17 +24,29 @@ class ProductService:
     def create_seller_product(
         seller,
         category_code,
-        form_data,
+        name,
+        description='',
+        price=None,
+        currency='INR',
+        tag=None,
+        availability='In Stock',
+        extra_info=None,
         images=None,
         location_data=None
     ):
         """
-        Create a product from seller form submission.
+        Create a product from seller submission.
 
         Args:
             seller: Seller instance
             category_code: Category code
-            form_data: Validated form data dictionary
+            name: Product name (required)
+            description: Product description
+            price: Product price
+            currency: Currency code
+            tag: Product tag
+            availability: Availability status
+            extra_info: Extra product info as key-value dict
             images: List of image files (optional)
             location_data: Location data dict (optional)
 
@@ -44,39 +54,24 @@ class ProductService:
             SellerProduct: Created seller product
 
         Raises:
-            ValidationError: If creation fails
+            ValueError: If creation fails
         """
+        extra_info = extra_info or {}
         try:
             with transaction.atomic():
-                # Get category
+                # Get category and verify it's a leaf category
                 category = Category.objects.get(
                     category_code=category_code,
                     is_active=True
                 )
 
-                # Get form config and validate
-                form_config = FormService.get_form_config(category_code)
-                validated_data = FormService.validate_form_data(
-                    form_config,
-                    form_data
-                )
-
-                # Extract common product fields from form data
-                product_name = validated_data.get('name', '')
-                if not product_name:
-                    raise ValueError("Product name is required")
-
-                product_description = validated_data.get(
-                    'description',
-                    ''
-                )
-                product_price = validated_data.get('price')
-                product_currency = validated_data.get('currency', 'INR')
-                product_tag = validated_data.get('tag')
-                product_availability = validated_data.get(
-                    'availability',
-                    'In Stock'
-                )
+                # Products can only be assigned to leaf categories
+                if not category.is_leaf_category():
+                    raise ValueError(
+                        "Products can only be assigned to leaf categories "
+                        "(categories with no sub-categories). "
+                        f"Category '{category.name}' has sub-categories."
+                    )
 
                 # Generate unique product code
                 product_code = ProductService._generate_product_code(
@@ -97,46 +92,35 @@ class ProductService:
 
                 # Create product
                 product = Product.objects.create(
-                    name=product_name,
+                    name=name,
                     product_code=product_code,
-                    description=product_description,
+                    description=description or '',
                     category=category,
                     seller=seller,
                     location=location,
-                    tag=product_tag,
-                    price=product_price,
-                    currency=product_currency,
-                    availability=product_availability,
-                    is_active=True  # Will be controlled by status
+                    tag=tag,
+                    price=price,
+                    currency=currency,
+                    availability=availability,
+                    is_active=True
                 )
 
-                # Create product specifications from form data
-                # (excluding common fields)
-                common_fields = [
-                    'name',
-                    'description',
-                    'price',
-                    'currency',
-                    'tag',
-                    'availability'
-                ]
-                for key, value in validated_data.items():
-                    if key not in common_fields and value:
-                        from olmachine_products.models import (
-                            ProductSpecification
-                        )
+                # Store extra_info key-value as ProductSpecification so buyer
+                # product detail API can show specs (Indiamart-style listing).
+                for key, value in extra_info.items():
+                    if value is not None and value != '':
                         ProductSpecification.objects.create(
                             product=product,
-                            key=key,
+                            key=str(key),
                             value=str(value)
                         )
 
-                # Create seller product
+                # Create seller product with extra_info
                 seller_product = SellerProduct.objects.create(
                     product=product,
                     seller=seller,
-                    status='listed',  # Direct listing (no approval yet)
-                    form_data=validated_data
+                    status='listed',
+                    extra_info=extra_info
                 )
 
                 # Handle images if provided

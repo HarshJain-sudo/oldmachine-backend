@@ -19,13 +19,28 @@ class CategoryAdmin(admin.ModelAdmin):
     list_display = (
         'name',
         'category_code',
+        'parent_category',
+        'level',
         'order',
         'is_active',
+        'is_leaf_category_display',
         'created_at'
     )
-    list_filter = ('is_active', 'created_at')
+    list_filter = ('is_active', 'level', 'parent_category', 'created_at')
     search_fields = ('name', 'category_code')
-    ordering = ('order', 'name')
+    ordering = ('level', 'order', 'name')
+    raw_id_fields = ('parent_category',)
+
+    def is_leaf_category_display(self, obj):
+        """Display if category is a leaf category."""
+        return obj.is_leaf_category()
+    is_leaf_category_display.boolean = True
+    is_leaf_category_display.short_description = 'Is Leaf'
+
+    def get_queryset(self, request):
+        """Optimize queryset with select_related."""
+        qs = super().get_queryset(request)
+        return qs.select_related('parent_category')
 
 
 @admin.register(Seller)

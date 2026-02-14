@@ -3,57 +3,20 @@
 from django.contrib import admin
 from .models import (
     CategoryFormConfig,
-    FormField,
     SellerProfile,
     SellerProduct,
     ProductApproval
 )
 
 
-class FormFieldInline(admin.TabularInline):
-    """Inline admin for FormField."""
-
-    model = FormField
-    extra = 1
-    fields = [
-        'field_name',
-        'field_label',
-        'field_type',
-        'is_required',
-        'order'
-    ]
-
-
 @admin.register(CategoryFormConfig)
 class CategoryFormConfigAdmin(admin.ModelAdmin):
-    """Admin interface for CategoryFormConfig model."""
+    """Form config per category. schema = JSON array of field defs for frontend."""
 
-    list_display = (
-        'category',
-        'is_active',
-        'created_at'
-    )
-    list_filter = ('is_active', 'created_at')
+    list_display = ('category', 'is_active', 'created_at')
+    list_filter = ('is_active',)
     search_fields = ('category__name', 'category__category_code')
-    inlines = [FormFieldInline]
     ordering = ('-created_at',)
-
-
-@admin.register(FormField)
-class FormFieldAdmin(admin.ModelAdmin):
-    """Admin interface for FormField model."""
-
-    list_display = (
-        'field_label',
-        'field_name',
-        'field_type',
-        'form_config',
-        'is_required',
-        'order'
-    )
-    list_filter = ('field_type', 'is_required', 'form_config')
-    search_fields = ('field_label', 'field_name')
-    ordering = ('form_config', 'order', 'field_label')
 
 
 @admin.register(SellerProfile)

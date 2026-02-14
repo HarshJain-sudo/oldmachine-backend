@@ -9,28 +9,16 @@ from rest_framework.permissions import IsAuthenticated
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from django.shortcuts import get_object_or_404
-from django.core.exceptions import ValidationError
 from olmachine_products.models import Category
-from olmachine_seller_portal.models import (
-    CategoryFormConfig,
-    SellerProduct,
-    SellerProfile
-)
+from olmachine_seller_portal.models import CategoryFormConfig, SellerProfile
+from olmachine_seller_portal.models import MAX_CATEGORY_DEPTH
 from olmachine_seller_portal.serializers import (
     CategoryFormConfigSerializer,
-    CategoryFormConfigCreateSerializer,
     SellerProductSerializer,
     SellerProductCreateSerializer,
-    ProductApprovalSerializer
 )
-from olmachine_seller_portal.permissions import (
-    IsSeller,
-    IsAdminOrTeam
-)
-from olmachine_seller_portal.services.product_service import (
-    ProductService
-)
-from olmachine_seller_portal.services.form_service import FormService
+from olmachine_seller_portal.permissions import IsSeller
+from olmachine_seller_portal.services.product_service import ProductService
 from oldmachine_backend.utils.response_utils import (
     success_response,
     error_response
@@ -38,444 +26,318 @@ from oldmachine_backend.utils.response_utils import (
 
 logger = logging.getLogger(__name__)
 
+# --- Swagger response schemas (so response objects are defined in UI) ---
 
-class CategoryFormConfigListView(APIView):
-    """
-    List and create category form configurations.
+_category_item_schema = openapi.Schema(
+    type=openapi.TYPE_OBJECT,
+    description="Single category in tree",
+    properties={
+        'category_code': openapi.Schema(type=openapi.TYPE_STRING, description='Unique category code'),
+        'category_name': openapi.Schema(type=openapi.TYPE_STRING, description='Display name'),
+        'description': openapi.Schema(type=openapi.TYPE_STRING),
+        'image_url': openapi.Schema(type=openapi.TYPE_STRING, format=openapi.FORMAT_URI, nullable=True),
+        'level': openapi.Schema(type=openapi.TYPE_INTEGER, description='Depth in tree (0=root)'),
+        'parent_category_code': openapi.Schema(type=openapi.TYPE_STRING, nullable=True),
+        'parent_category_name': openapi.Schema(type=openapi.TYPE_STRING, nullable=True),
+        'full_path': openapi.Schema(type=openapi.TYPE_STRING, description='e.g. Electronics > Phones'),
+        'has_children': openapi.Schema(type=openapi.TYPE_BOOLEAN, description='True if has sub-categories'),
+        'is_leaf': openapi.Schema(type=openapi.TYPE_BOOLEAN, description='True if no children; use form config'),
+    },
+    required=['category_code', 'category_name', 'level', 'has_children', 'is_leaf']
+)
 
-    GET /api/seller-portal/category-form-configs/
-    POST /api/seller-portal/category-form-configs/
-    """
-
-    permission_classes = [IsAuthenticated, IsAdminOrTeam]
-
-    @swagger_auto_schema(
-        operation_summary="List category form configurations",
-        operation_description="Get all category form configurations",
-        manual_parameters=[
-            openapi.Parameter(
-                'category_code',
-                openapi.IN_QUERY,
-                description="Filter by category code",
-                type=openapi.TYPE_STRING,
-                required=False
-            ),
-        ],
-        responses={
-            200: openapi.Response(
-                description="List of form configurations"
-            ),
-            401: openapi.Response(description="Unauthorized"),
-        },
-        tags=['Form Configuration']
-    )
-    def get(self, request):
-        """List all category form configurations."""
-        category_code = request.query_params.get('category_code')
-
-        queryset = CategoryFormConfig.objects.select_related(
-            'category'
-        ).prefetch_related('fields').all()
-
-        if category_code:
-            queryset = queryset.filter(
-                category__category_code=category_code
-            )
-
-        serializer = CategoryFormConfigSerializer(queryset, many=True)
-        return success_response(
-            data={'form_configs': serializer.data},
-            http_status_code=status.HTTP_200_OK
+_categories_response_schema = openapi.Schema(
+    type=openapi.TYPE_OBJECT,
+    description="Response with list of categories",
+    properties={
+        'categories': openapi.Schema(
+            type=openapi.TYPE_ARRAY,
+            description='List of categories',
+            items=_category_item_schema
         )
+    },
+    required=['categories']
+)
 
-    @swagger_auto_schema(
-        operation_summary="Create category form configuration",
-        operation_description="Create form configuration for a category",
-        request_body=CategoryFormConfigCreateSerializer,
-        responses={
-            201: openapi.Response(
-                description="Form configuration created"
-            ),
-            400: openapi.Response(description="Bad request"),
-            401: openapi.Response(description="Unauthorized"),
-        },
-        tags=['Form Configuration']
-    )
-    def post(self, request):
-        """Create category form configuration."""
-        serializer = CategoryFormConfigCreateSerializer(data=request.data)
+_form_field_schema_item = openapi.Schema(
+    type=openapi.TYPE_OBJECT,
+    description="Form field definition for frontend",
+    properties={
+        'field_name': openapi.Schema(type=openapi.TYPE_STRING, description='Key for extra_info on submit'),
+        'field_label': openapi.Schema(type=openapi.TYPE_STRING),
+        'field_type': openapi.Schema(type=openapi.TYPE_STRING, enum=['text', 'number', 'textarea', 'select', 'radio', 'checkbox', 'date', 'email', 'url']),
+        'is_required': openapi.Schema(type=openapi.TYPE_BOOLEAN),
+        'order': openapi.Schema(type=openapi.TYPE_INTEGER),
+        'options': openapi.Schema(type=openapi.TYPE_ARRAY, items=openapi.Schema(type=openapi.TYPE_OBJECT), description='For select/radio'),
+        'placeholder': openapi.Schema(type=openapi.TYPE_STRING, nullable=True),
+        'help_text': openapi.Schema(type=openapi.TYPE_STRING, nullable=True),
+    }
+)
 
-        if not serializer.is_valid():
-            return error_response(
-                message="Invalid form configuration data",
-                res_status="INVALID_DATA",
-                http_status_code=status.HTTP_400_BAD_REQUEST
-            )
+_form_config_response_schema = openapi.Schema(
+    type=openapi.TYPE_OBJECT,
+    description="Form configuration for leaf category",
+    properties={
+        'id': openapi.Schema(type=openapi.TYPE_STRING, format=openapi.FORMAT_UUID),
+        'category': openapi.Schema(type=openapi.TYPE_STRING, format=openapi.FORMAT_UUID),
+        'category_code': openapi.Schema(type=openapi.TYPE_STRING),
+        'category_name': openapi.Schema(type=openapi.TYPE_STRING),
+        'is_active': openapi.Schema(type=openapi.TYPE_BOOLEAN),
+        'schema': openapi.Schema(
+            type=openapi.TYPE_ARRAY,
+            description='Field definitions for frontend to render form',
+            items=_form_field_schema_item
+        ),
+        'is_leaf': openapi.Schema(type=openapi.TYPE_BOOLEAN, description='Always true'),
+    },
+    required=['category_code', 'category_name', 'schema', 'is_leaf']
+)
 
-        try:
-            form_config = serializer.save()
-            response_serializer = CategoryFormConfigSerializer(form_config)
-            return success_response(
-                data=response_serializer.data,
-                http_status_code=status.HTTP_201_CREATED
-            )
-        except Exception as e:
-            logger.error(f"Error creating form config: {str(e)}")
-            return error_response(
-                message="Error creating form configuration",
-                res_status="ERROR",
-                http_status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+_error_response_schema = openapi.Schema(
+    type=openapi.TYPE_OBJECT,
+    properties={
+        'response': openapi.Schema(type=openapi.TYPE_STRING, description='Error message'),
+        'http_status_code': openapi.Schema(type=openapi.TYPE_INTEGER),
+        'res_status': openapi.Schema(type=openapi.TYPE_STRING, description='Machine-readable status'),
+    },
+    required=['response', 'http_status_code', 'res_status']
+)
+
+_create_product_response_schema = openapi.Schema(
+    type=openapi.TYPE_OBJECT,
+    description="Created seller product",
+    properties={
+        'id': openapi.Schema(type=openapi.TYPE_STRING, format=openapi.FORMAT_UUID),
+        'product': openapi.Schema(type=openapi.TYPE_STRING, format=openapi.FORMAT_UUID),
+        'product_details': openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            description='Nested product (name, product_code, price, product_specifications, etc.)'
+        ),
+        'seller': openapi.Schema(type=openapi.TYPE_STRING, format=openapi.FORMAT_UUID),
+        'seller_name': openapi.Schema(type=openapi.TYPE_STRING),
+        'status': openapi.Schema(type=openapi.TYPE_STRING, enum=['draft', 'pending_approval', 'approved', 'rejected', 'listed']),
+        'rejection_reason': openapi.Schema(type=openapi.TYPE_STRING, nullable=True),
+        'approved_by': openapi.Schema(type=openapi.TYPE_STRING, nullable=True),
+        'approved_by_name': openapi.Schema(type=openapi.TYPE_STRING, nullable=True),
+        'approved_at': openapi.Schema(type=openapi.TYPE_STRING, nullable=True),
+        'extra_info': openapi.Schema(type=openapi.TYPE_OBJECT, description='Key-value from form'),
+        'created_at': openapi.Schema(type=openapi.TYPE_STRING, format=openapi.FORMAT_DATETIME),
+        'updated_at': openapi.Schema(type=openapi.TYPE_STRING, format=openapi.FORMAT_DATETIME),
+    },
+    required=['id', 'product', 'status', 'extra_info']
+)
 
 
-class CategoryFormConfigDetailView(APIView):
+def _category_to_dict(cat):
+    """Build category payload for tree APIs."""
+    return {
+        'category_code': cat.category_code,
+        'category_name': cat.name,
+        'description': cat.description or '',
+        'image_url': cat.image_url,
+        'level': cat.level,
+        'parent_category_code': (
+            cat.parent_category.category_code
+            if cat.parent_category else None
+        ),
+        'parent_category_name': (
+            cat.parent_category.name
+            if cat.parent_category else None
+        ),
+        'full_path': cat.get_full_path(),
+        'has_children': cat.sub_categories.filter(is_active=True).exists(),
+        'is_leaf': cat.is_leaf_category(),
+    }
+
+
+class RootCategoriesView(APIView):
     """
-    Get, update, delete category form configuration.
+    List root categories (categories with no parent).
+    Seller selects one, then uses children API to drill down (max 5 levels).
 
-    GET /api/seller-portal/category-form-configs/{category_code}/
-    PUT /api/seller-portal/category-form-configs/{id}/
-    DELETE /api/seller-portal/category-form-configs/{id}/
-    """
-
-    permission_classes = [IsAuthenticated, IsAdminOrTeam]
-
-    @swagger_auto_schema(
-        operation_summary="Get form configuration by category code",
-        operation_description="Get form configuration for a category",
-        responses={
-            200: openapi.Response(
-                description="Form configuration"
-            ),
-            404: openapi.Response(description="Not found"),
-        },
-        tags=['Form Configuration']
-    )
-    def get(self, request, category_code):
-        """Get form configuration for a category."""
-        try:
-            category = Category.objects.get(
-                category_code=category_code,
-                is_active=True
-            )
-            form_config = get_object_or_404(
-                CategoryFormConfig,
-                category=category
-            )
-            serializer = CategoryFormConfigSerializer(form_config)
-            return success_response(
-                data=serializer.data,
-                http_status_code=status.HTTP_200_OK
-            )
-        except Category.DoesNotExist:
-            return error_response(
-                message="Category not found",
-                res_status="CATEGORY_NOT_FOUND",
-                http_status_code=status.HTTP_404_NOT_FOUND
-            )
-
-    @swagger_auto_schema(
-        operation_summary="Update form configuration",
-        operation_description="Update form configuration for a category",
-        request_body=CategoryFormConfigCreateSerializer,
-        responses={
-            200: openapi.Response(description="Form configuration updated"),
-            400: openapi.Response(description="Bad request"),
-            404: openapi.Response(description="Not found"),
-        },
-        tags=['Form Configuration']
-    )
-    def put(self, request, category_code):
-        """Update form configuration."""
-        try:
-            category = Category.objects.get(
-                category_code=category_code,
-                is_active=True
-            )
-            form_config = get_object_or_404(
-                CategoryFormConfig,
-                category=category
-            )
-        except Category.DoesNotExist:
-            return error_response(
-                message="Category not found",
-                res_status="CATEGORY_NOT_FOUND",
-                http_status_code=status.HTTP_404_NOT_FOUND
-            )
-
-        serializer = CategoryFormConfigCreateSerializer(
-            form_config,
-            data=request.data
-        )
-        if not serializer.is_valid():
-            return error_response(
-                message="Invalid form configuration data",
-                res_status="INVALID_DATA",
-                http_status_code=status.HTTP_400_BAD_REQUEST
-            )
-
-        try:
-            form_config = serializer.save()
-            response_serializer = CategoryFormConfigSerializer(form_config)
-            return success_response(
-                data=response_serializer.data,
-                http_status_code=status.HTTP_200_OK
-            )
-        except Exception as e:
-            logger.error(f"Error updating form config: {str(e)}")
-            return error_response(
-                message="Error updating form configuration",
-                res_status="ERROR",
-                http_status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
-    @swagger_auto_schema(
-        operation_summary="Delete form configuration",
-        operation_description="Delete form configuration for a category",
-        responses={
-            200: openapi.Response(description="Form configuration deleted"),
-            404: openapi.Response(description="Not found"),
-        },
-        tags=['Form Configuration']
-    )
-    def delete(self, request, category_code):
-        """Delete form configuration."""
-        try:
-            category = Category.objects.get(
-                category_code=category_code,
-                is_active=True
-            )
-            form_config = get_object_or_404(
-                CategoryFormConfig,
-                category=category
-            )
-        except Category.DoesNotExist:
-            return error_response(
-                message="Category not found",
-                res_status="CATEGORY_NOT_FOUND",
-                http_status_code=status.HTTP_404_NOT_FOUND
-            )
-
-        try:
-            form_config.delete()
-            return success_response(
-                data={'message': 'Form configuration deleted successfully'},
-                http_status_code=status.HTTP_200_OK
-            )
-        except Exception as e:
-            logger.error(f"Error deleting form config: {str(e)}")
-            return error_response(
-                message="Error deleting form configuration",
-                res_status="ERROR",
-                http_status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
-
-class CategoriesWithFormsView(APIView):
-    """
-    List categories that have form configurations.
-
-    GET /api/seller-portal/categories/with-forms/
+    GET /api/seller-portal/categories/roots/
     """
 
     permission_classes = [IsAuthenticated, IsSeller]
 
     @swagger_auto_schema(
-        operation_summary="List categories with form configurations",
+        operation_summary="List root categories",
         operation_description=(
-            "Get list of categories that have active form "
-            "configurations for sellers"
+            "Get categories that have no parent. Seller selects one, then "
+            "calls children API for that category. Drill down until a leaf "
+            "category is selected (max 5 levels)."
         ),
         responses={
             200: openapi.Response(
-                description="List of categories with forms"
+                description="List of root categories",
+                schema=_categories_response_schema
             ),
-            401: openapi.Response(description="Unauthorized"),
+            401: openapi.Response(description="Unauthorized", schema=_error_response_schema),
         },
-        tags=['Seller Products']
+        tags=['Seller Portal']
     )
     def get(self, request):
-        """List categories with form configurations."""
-        categories = Category.objects.filter(
+        roots = Category.objects.filter(
             is_active=True,
-            form_config__is_active=True
-        ).select_related('form_config').distinct()
-
-        categories_data = []
-        for category in categories:
-            categories_data.append({
-                'category_code': category.category_code,
-                'category_name': category.name,
-                'description': category.description,
-                'image_url': category.image_url,
-                'has_form': True
-            })
-
+            parent_category__isnull=True
+        ).order_by('order', 'name')
+        data = [_category_to_dict(c) for c in roots]
         return success_response(
-            data={'categories': categories_data},
+            data={'categories': data},
             http_status_code=status.HTTP_200_OK
         )
 
 
-class SellerProductFormView(APIView):
+class CategoryChildrenView(APIView):
     """
-    Get form configuration for seller to fill.
+    List direct children of a category.
+    Used to drill down the tree (max depth 5). When a category has no
+    children, it is a leaf; use form config API for that category.
 
-    GET /api/seller-portal/form/{category_code}/
+    GET /api/seller-portal/categories/children/<category_code>/
     """
 
     permission_classes = [IsAuthenticated, IsSeller]
 
     @swagger_auto_schema(
-        operation_summary="Get form for category",
+        operation_summary="List child categories",
         operation_description=(
-            "Get form configuration with fields for seller to fill"
+            "Get direct sub-categories of the given category. "
+            "Nested structure is allowed up to 5 levels. When the selected "
+            "category has no children (is_leaf), use form config API."
         ),
         responses={
             200: openapi.Response(
-                description="Form configuration"
+                description="List of child categories",
+                schema=_categories_response_schema
             ),
-            404: openapi.Response(description="Not found"),
+            404: openapi.Response(description="Category not found", schema=_error_response_schema),
+            401: openapi.Response(description="Unauthorized", schema=_error_response_schema),
         },
-        tags=['Seller Products']
+        tags=['Seller Portal']
     )
     def get(self, request, category_code):
-        """Get form configuration for a category."""
-        try:
-            form_config = FormService.get_form_config(category_code)
-            serializer = CategoryFormConfigSerializer(form_config)
+        category = get_object_or_404(
+            Category,
+            category_code=category_code,
+            is_active=True
+        )
+        if category.level >= MAX_CATEGORY_DEPTH - 1:
             return success_response(
-                data=serializer.data,
+                data={'categories': []},
                 http_status_code=status.HTTP_200_OK
             )
-        except ValidationError as e:
+        children = category.sub_categories.filter(
+            is_active=True
+        ).order_by('order', 'name')
+        data = [_category_to_dict(c) for c in children]
+        return success_response(
+            data={'categories': data},
+            http_status_code=status.HTTP_200_OK
+        )
+
+
+class FormConfigView(APIView):
+    """
+    Get form configuration for a leaf category.
+    Frontend uses schema (JSON) to render the form. When seller submits,
+    send the filled key-value as extra_info in create product.
+
+    GET /api/seller-portal/form/<category_code>/
+    """
+
+    permission_classes = [IsAuthenticated, IsSeller]
+
+    @swagger_auto_schema(
+        operation_summary="Get form config for category",
+        operation_description=(
+            "Returns form schema for the given category. Only available for "
+            "leaf categories (no children). Schema is a JSON array of field "
+            "definitions (field_name, field_label, field_type, is_required, "
+            "order, options) for frontend to render the form. Submit values "
+            "as extra_info when creating the product."
+        ),
+        responses={
+            200: openapi.Response(
+                description="Form configuration with schema",
+                schema=_form_config_response_schema
+            ),
+            400: openapi.Response(description="Not a leaf category", schema=_error_response_schema),
+            404: openapi.Response(description="Category or form config not found", schema=_error_response_schema),
+            401: openapi.Response(description="Unauthorized", schema=_error_response_schema),
+        },
+        tags=['Seller Portal']
+    )
+    def get(self, request, category_code):
+        category = get_object_or_404(
+            Category,
+            category_code=category_code,
+            is_active=True
+        )
+        if not category.is_leaf_category():
             return error_response(
-                message=str(e),
+                message=(
+                    "Form is only available for leaf categories. "
+                    "Please select a sub-category."
+                ),
+                res_status="NOT_LEAF_CATEGORY",
+                http_status_code=status.HTTP_400_BAD_REQUEST
+            )
+        try:
+            form_config = CategoryFormConfig.objects.get(
+                category=category,
+                is_active=True
+            )
+        except CategoryFormConfig.DoesNotExist:
+            return error_response(
+                message="No form configuration found for this category.",
                 res_status="FORM_CONFIG_NOT_FOUND",
                 http_status_code=status.HTTP_404_NOT_FOUND
             )
+        serializer = CategoryFormConfigSerializer(form_config)
+        return success_response(
+            data={
+                **serializer.data,
+                'is_leaf': True,
+            },
+            http_status_code=status.HTTP_200_OK
+        )
 
 
-class SellerProductListView(APIView):
+class SellerProductCreateView(APIView):
     """
-    List and create seller products.
+    Create seller product (submit form).
+    Only API for product creation. No list/detail/update/delete in seller portal.
 
-    GET /api/seller-portal/products/
     POST /api/seller-portal/products/
     """
 
     permission_classes = [IsAuthenticated, IsSeller]
 
     @swagger_auto_schema(
-        operation_summary="List seller products",
-        operation_description="Get list of products created by seller",
-        manual_parameters=[
-            openapi.Parameter(
-                'status',
-                openapi.IN_QUERY,
-                description="Filter by status",
-                type=openapi.TYPE_STRING,
-                required=False
-            ),
-            openapi.Parameter(
-                'category_code',
-                openapi.IN_QUERY,
-                description="Filter by category code",
-                type=openapi.TYPE_STRING,
-                required=False
-            ),
-            openapi.Parameter(
-                'limit',
-                openapi.IN_QUERY,
-                description="Number of results",
-                type=openapi.TYPE_INTEGER,
-                required=False
-            ),
-            openapi.Parameter(
-                'offset',
-                openapi.IN_QUERY,
-                description="Offset for pagination",
-                type=openapi.TYPE_INTEGER,
-                required=False
-            ),
-        ],
-        responses={
-            200: openapi.Response(
-                description="List of seller products"
-            ),
-            401: openapi.Response(description="Unauthorized"),
-        },
-        tags=['Seller Products']
-    )
-    def get(self, request):
-        """List seller's products."""
-        # Get seller profile
-        try:
-            seller_profile = SellerProfile.objects.get(
-                user=request.user
-            )
-            seller = seller_profile.seller
-        except SellerProfile.DoesNotExist:
-            return error_response(
-                message="Seller profile not found",
-                res_status="SELLER_PROFILE_NOT_FOUND",
-                http_status_code=status.HTTP_404_NOT_FOUND
-            )
-
-        # Filter products
-        queryset = SellerProduct.objects.filter(
-            seller=seller
-        ).select_related(
-            'product',
-            'product__category',
-            'product__seller',
-            'product__location'
-        ).prefetch_related(
-            'product__images',
-            'product__specifications'
-        )
-
-        # Apply filters
-        status_filter = request.query_params.get('status')
-        if status_filter:
-            queryset = queryset.filter(status=status_filter)
-
-        category_code = request.query_params.get('category_code')
-        if category_code:
-            queryset = queryset.filter(
-                product__category__category_code=category_code
-            )
-
-        # Pagination
-        limit = int(request.query_params.get('limit', 10))
-        offset = int(request.query_params.get('offset', 0))
-        queryset = queryset[offset:offset + limit]
-
-        serializer = SellerProductSerializer(queryset, many=True)
-        return success_response(
-            data={'products': serializer.data},
-            http_status_code=status.HTTP_200_OK
-        )
-
-    @swagger_auto_schema(
         operation_summary="Create seller product",
-        operation_description="Create a new product from form submission",
+        operation_description=(
+            "Create a new product. Provide category_code, name, and optional "
+            "description, price, currency, tag, availability, extra_info (JSON), "
+            "location, and images."
+        ),
         request_body=SellerProductCreateSerializer,
         responses={
             201: openapi.Response(
-                description="Product created successfully"
+                description="Product created successfully",
+                schema=_create_product_response_schema
             ),
-            400: openapi.Response(description="Bad request"),
-            401: openapi.Response(description="Unauthorized"),
+            400: openapi.Response(description="Bad request", schema=_error_response_schema),
+            401: openapi.Response(description="Unauthorized", schema=_error_response_schema),
+            404: openapi.Response(description="Seller profile not found", schema=_error_response_schema),
+            500: openapi.Response(description="Server error", schema=_error_response_schema),
         },
-        tags=['Seller Products']
+        tags=['Seller Portal']
     )
     def post(self, request):
-        """Create seller product from form submission."""
-        # Get seller profile
+        """Create seller product."""
         try:
-            seller_profile = SellerProfile.objects.get(
-                user=request.user
-            )
+            seller_profile = SellerProfile.objects.get(user=request.user)
             seller = seller_profile.seller
         except SellerProfile.DoesNotExist:
             return error_response(
@@ -484,7 +346,6 @@ class SellerProductListView(APIView):
                 http_status_code=status.HTTP_404_NOT_FOUND
             )
 
-        # Validate input
         serializer = SellerProductCreateSerializer(data=request.data)
         if not serializer.is_valid():
             return error_response(
@@ -493,23 +354,27 @@ class SellerProductListView(APIView):
                 http_status_code=status.HTTP_400_BAD_REQUEST
             )
 
+        data = serializer.validated_data
         try:
-            # Create product
             seller_product = ProductService.create_seller_product(
                 seller=seller,
-                category_code=serializer.validated_data['category_code'],
-                form_data=serializer.validated_data['form_data'],
+                category_code=data['category_code'],
+                name=data['name'],
+                description=data.get('description', ''),
+                price=data.get('price'),
+                currency=data.get('currency', 'INR'),
+                tag=data.get('tag'),
+                availability=data.get('availability', 'In Stock'),
+                extra_info=data.get('extra_info') or {},
                 images=request.FILES.getlist('images'),
-                location_data=serializer.validated_data.get('location')
+                location_data=data.get('location')
             )
-
             response_serializer = SellerProductSerializer(seller_product)
             return success_response(
                 data=response_serializer.data,
                 http_status_code=status.HTTP_201_CREATED
             )
-
-        except ValidationError as e:
+        except ValueError as e:
             return error_response(
                 message=str(e),
                 res_status="VALIDATION_ERROR",
@@ -519,152 +384,6 @@ class SellerProductListView(APIView):
             logger.error(f"Error creating seller product: {str(e)}")
             return error_response(
                 message="Error creating product",
-                res_status="ERROR",
-                http_status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
-
-class SellerProductDetailView(APIView):
-    """
-    Get, update, delete seller product.
-
-    GET /api/seller-portal/products/{product_id}/
-    PUT /api/seller-portal/products/{product_id}/
-    DELETE /api/seller-portal/products/{product_id}/
-    """
-
-    permission_classes = [IsAuthenticated, IsSeller]
-
-    def get_seller_product(self, product_id, user):
-        """Get seller product and verify ownership."""
-        try:
-            seller_profile = SellerProfile.objects.get(user=user)
-            seller = seller_profile.seller
-            seller_product = get_object_or_404(
-                SellerProduct,
-                id=product_id,
-                seller=seller
-            )
-            return seller_product
-        except SellerProfile.DoesNotExist:
-            return None
-
-    @swagger_auto_schema(
-        operation_summary="Get seller product details",
-        operation_description="Get details of a seller product",
-        responses={
-            200: openapi.Response(description="Product details"),
-            404: openapi.Response(description="Not found"),
-        },
-        tags=['Seller Products']
-    )
-    def get(self, request, product_id):
-        """Get seller product details."""
-        seller_product = self.get_seller_product(product_id, request.user)
-
-        if not seller_product:
-            return error_response(
-                message="Product not found or access denied",
-                res_status="PRODUCT_NOT_FOUND",
-                http_status_code=status.HTTP_404_NOT_FOUND
-            )
-
-        serializer = SellerProductSerializer(seller_product)
-        return success_response(
-            data=serializer.data,
-            http_status_code=status.HTTP_200_OK
-        )
-
-    @swagger_auto_schema(
-        operation_summary="Update seller product",
-        operation_description="Update a seller product",
-        request_body=SellerProductCreateSerializer,
-        responses={
-            200: openapi.Response(description="Product updated"),
-            400: openapi.Response(description="Bad request"),
-            404: openapi.Response(description="Not found"),
-        },
-        tags=['Seller Products']
-    )
-    def put(self, request, product_id):
-        """Update seller product."""
-        seller_product = self.get_seller_product(product_id, request.user)
-
-        if not seller_product:
-            return error_response(
-                message="Product not found or access denied",
-                res_status="PRODUCT_NOT_FOUND",
-                http_status_code=status.HTTP_404_NOT_FOUND
-            )
-
-        # Only allow update if status is draft or rejected
-        if seller_product.status not in ['draft', 'rejected']:
-            return error_response(
-                message=(
-                    "Product can only be updated when status is "
-                    "draft or rejected"
-                ),
-                res_status="INVALID_STATUS",
-                http_status_code=status.HTTP_400_BAD_REQUEST
-            )
-
-        # Validate input
-        serializer = SellerProductCreateSerializer(data=request.data)
-        if not serializer.is_valid():
-            return error_response(
-                message="Invalid product data",
-                res_status="INVALID_DATA",
-                http_status_code=status.HTTP_400_BAD_REQUEST
-            )
-
-        try:
-            # Update product (simplified - in production, implement full update)
-            # For now, return success
-            return error_response(
-                message="Update functionality to be implemented",
-                res_status="NOT_IMPLEMENTED",
-                http_status_code=status.HTTP_501_NOT_IMPLEMENTED
-            )
-
-        except Exception as e:
-            logger.error(f"Error updating seller product: {str(e)}")
-            return error_response(
-                message="Error updating product",
-                res_status="ERROR",
-                http_status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
-    @swagger_auto_schema(
-        operation_summary="Delete seller product",
-        operation_description="Delete a seller product",
-        responses={
-            200: openapi.Response(description="Product deleted"),
-            404: openapi.Response(description="Not found"),
-        },
-        tags=['Seller Products']
-    )
-    def delete(self, request, product_id):
-        """Delete seller product."""
-        seller_product = self.get_seller_product(product_id, request.user)
-
-        if not seller_product:
-            return error_response(
-                message="Product not found or access denied",
-                res_status="PRODUCT_NOT_FOUND",
-                http_status_code=status.HTTP_404_NOT_FOUND
-            )
-
-        try:
-            # Delete product (cascade will delete related data)
-            seller_product.product.delete()
-            return success_response(
-                data={'message': 'Product deleted successfully'},
-                http_status_code=status.HTTP_200_OK
-            )
-        except Exception as e:
-            logger.error(f"Error deleting seller product: {str(e)}")
-            return error_response(
-                message="Error deleting product",
                 res_status="ERROR",
                 http_status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )

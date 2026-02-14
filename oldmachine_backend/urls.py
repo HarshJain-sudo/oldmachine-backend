@@ -10,16 +10,14 @@ from drf_yasg.views import get_schema_view
 from drf_yasg import openapi
 from rest_framework import permissions
 
-# Swagger/OpenAPI Schema View
+# Swagger/OpenAPI Schema View (no patterns = use full urlpatterns so all APIs appear)
 schema_view = get_schema_view(
     openapi.Info(
         title="OldMachine Backend API",
         default_version='v1',
         description=(
             "API documentation for OldMachine Backend. "
-            "This API provides endpoints for user authentication, "
-            "product management, and category browsing with "
-            "personalized recommendations."
+            "Includes: marketplace (users, products), seller portal (categories, form config, create product)."
         ),
         terms_of_service="https://www.google.com/policies/terms/",
         contact=openapi.Contact(email="contact@oldmachine.local"),
@@ -27,14 +25,6 @@ schema_view = get_schema_view(
     ),
     public=True,
     permission_classes=(permissions.AllowAny,),
-    patterns=[
-        path('api/marketplace/', include('olmachine_users.urls')),
-        path('api/marketplace/', include('olmachine_products.urls')),
-        path(
-            'api/seller-portal/',
-            include('olmachine_seller_portal.urls')
-        ),
-    ],
 )
 
 urlpatterns = [

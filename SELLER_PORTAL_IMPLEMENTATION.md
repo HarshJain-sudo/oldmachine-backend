@@ -1,197 +1,109 @@
-# Seller Portal Feature - Implementation Summary
+# Seller Portal – Implementation Summary
 
-## ✅ Implementation Complete
+**API spec (request/response definitions):** `olmachine_seller_portal/api_spec.json` — Swagger 2.0 with definitions, parameters, responses, and paths for all 4 APIs. Use this for frontend integration.
 
-The seller product listing feature has been fully implemented with dynamic form configuration per category.
+---
 
-## 📁 New App Created
+## Seller flow (exact requirement)
 
-**`olmachine_seller_portal`** - Handles all seller-related product management
+1. **Seller sees root categories** – All categories that have no parent (top-level).
+2. **Seller selects one parent** – Then selects one sub-category. If that category has children, they select again. This drill-down continues **up to 5 levels** (root = level 0).
+3. **When the last selected category has no children (leaf)** – Return the **form config** for that category.
+4. **Frontend** – Uses the form config (JSON schema) to render the form. Frontend may use JSON-stringified objects to control how the form is shown.
+5. **Seller submits** – We store the filled data as **key-value** (e.g. `extra_info` and `ProductSpecification`).
+6. **Buyer view** – When the product is listed, buyers see proper product details: we store key-value so the existing product detail API (which returns `product_specifications`) can show specs in an Indiamart-style listing.
 
-## 🗄️ Database Models
+---
 
-1. **CategoryFormConfig** - Form configuration per category
-2. **FormField** - Individual field configuration (name, type, validation, etc.)
-3. **SellerProfile** - Links sellers to users
-4. **SellerProduct** - Products created by sellers with status tracking
-5. **ProductApproval** - Approval history (for future use)
+## Category tree (max 5 levels)
 
-## 🔌 API Endpoints
+- **Root categories**: categories with `parent_category = null`.
+- **Children**: direct sub-categories of a given category. Depth is limited to 5 levels (level 0 = root … level 4).
+- **Leaf**: a category with no active children. Only leaf categories can have a form config and list products.
 
-### Form Configuration APIs (Admin Only)
+---
 
-1. **GET** `/api/seller-portal/category-form-configs/`
-   - List all form configurations
-   - Query params: `category_code` (filter)
+## API endpoints (only these 4)
 
-2. **POST** `/api/seller-portal/category-form-configs/`
-   - Create form configuration for a category
+### 1. Root categories (seller entry point)
 
-3. **GET** `/api/seller-portal/category-form-configs/{category_code}/`
-   - Get form configuration by category code
+- **GET** `/api/seller-portal/categories/roots/`
+- **Auth:** Seller (IsSeller).
+- **Response:** List of root categories. Each item: `category_code`, `category_name`, `description`, `image_url`, `level`, `parent_category_code`, `parent_category_name`, `full_path`, `has_children`, `is_leaf`.
 
-4. **PUT** `/api/seller-portal/category-form-configs/{category_code}/`
-   - Update form configuration
+### 2. Child categories (drill-down)
 
-5. **DELETE** `/api/seller-portal/category-form-configs/{category_code}/`
-   - Delete form configuration
+- **GET** `/api/seller-portal/categories/children/<category_code>/`
+- **Auth:** Seller.
+- **Response:** Direct children of the given category. Same shape as above. Use until the user reaches a category with `has_children: false` (leaf). No children are returned when parent level is already at max depth.
 
-### Seller Product APIs (Seller Only)
+### 3. Form config (for leaf category only)
 
-6. **GET** `/api/seller-portal/categories/with-forms/`
-   - List categories that have form configurations
-
-7. **GET** `/api/seller-portal/form/{category_code}/`
-   - Get form configuration for seller to fill
-
-8. **POST** `/api/seller-portal/products/`
-   - Create a new product from form submission
-   - Body: `category_code`, `form_data`, `images[]`, `location`
-
-9. **GET** `/api/seller-portal/products/`
-   - List seller's products
-   - Query params: `status`, `category_code`, `limit`, `offset`
-
-10. **GET** `/api/seller-portal/products/{product_id}/`
-    - Get product details
-
-11. **PUT** `/api/seller-portal/products/{product_id}/`
-    - Update product (only if status is draft or rejected)
-
-12. **DELETE** `/api/seller-portal/products/{product_id}/`
-    - Delete product
-
-## 🔐 Permissions
-
-- **IsSeller** - User must have a seller profile
-- **IsAdminOrTeam** - User must be admin/staff
-- **IsSellerOrReadOnly** - Sellers can edit, others read-only
-
-## 📋 Form Field Types Supported
-
-- `text` - Single line text
-- `number` - Numeric input
-- `textarea` - Multi-line text
-- `select` - Dropdown
-- `radio` - Radio buttons
-- `checkbox` - Checkbox
-- `file` - File upload (images)
-- `date` - Date picker
-- `email` - Email with validation
-- `url` - URL with validation
-
-## 🔄 Product Status Flow
-
-Currently: **Direct Listing** (no approval)
-- `draft` → `listed` (direct)
-
-Future: **With Approval**
-- `draft` → `pending_approval` → `approved` → `listed`
-- `draft` → `pending_approval` → `rejected` → (can update)
-
-## 🚀 Next Steps
-
-1. **Run Migrations:**
-   ```bash
-   python manage.py migrate
-   ```
-
-2. **Create Seller Profile:**
-   - Link existing sellers to users via `SellerProfile` model
-   - Or create new sellers through admin
-
-3. **Configure Forms:**
-   - Use admin panel to create form configurations for categories
-   - Add fields with types, validation, and options
-
-4. **Test APIs:**
-   - Use Swagger UI at `/swagger/` to test all endpoints
-   - Create form configs as admin
-   - Create products as seller
-
-## 📝 Important Notes
-
-1. **Image Upload:** Currently returns placeholder URL. Implement actual cloud storage (S3, Cloudinary) in `ProductService._upload_image()`
-
-2. **Seller Profile:** Sellers must have a `SellerProfile` linked to a user to use seller APIs
-
-3. **Form Validation:** All form data is validated against form configuration before product creation
-
-4. **Product Code:** Auto-generated as `{CATEGORY_CODE}-PROD-{RANDOM}`
-
-5. **Future Approval:** Approval workflow models are ready but not yet implemented in views
-
-## 🎯 Usage Example
-
-### 1. Admin creates form configuration:
-```json
-POST /api/seller-portal/category-form-configs/
-{
-  "category": "category-uuid",
-  "is_active": true,
-  "fields": [
-    {
-      "field_name": "brand",
-      "field_label": "Brand Name",
-      "field_type": "text",
-      "is_required": true,
-      "order": 1
-    },
-    {
-      "field_name": "price",
-      "field_label": "Price",
-      "field_type": "number",
-      "is_required": true,
-      "validation_rules": {"min": 0},
-      "order": 2
-    }
+- **GET** `/api/seller-portal/form/<category_code>/`
+- **Auth:** Seller.
+- **When:** Only for a **leaf** category (the one with no children after drill-down).
+- **Response:** Form configuration for that category:
+  - `category_code`, `category_name`, `id`, `is_active`, **`schema`**, `is_leaf`.
+- **Schema:** JSON array of field definitions so the frontend can build the form. Example:
+  ```json
+  [
+    { "field_name": "brand", "field_label": "Brand", "field_type": "text", "is_required": true, "order": 1 },
+    { "field_name": "model", "field_label": "Model", "field_type": "text", "is_required": false, "order": 2 },
+    { "field_name": "condition", "field_label": "Condition", "field_type": "select", "is_required": true, "order": 3, "options": [{"value": "new", "label": "New"}, {"value": "used", "label": "Used"}] }
   ]
-}
-```
+  ```
+- **Errors:** 400 if category is not leaf (“Select a sub-category”). 404 if category or form config not found.
 
-### 2. Seller gets form:
-```
-GET /api/seller-portal/form/CAT001/
-```
+### 4. Create product (after form is filled)
 
-### 3. Seller creates product:
-```json
-POST /api/seller-portal/products/
-{
-  "category_code": "CAT001",
-  "form_data": {
-    "name": "Product Name",
-    "brand": "Brand Name",
-    "price": "1000",
-    "description": "Product description"
-  },
-  "location": {
-    "state": "State",
-    "district": "District"
-  }
-}
-```
+- **POST** `/api/seller-portal/products/`
+- **Body:**  
+  - `category_code` (required) – must be the **leaf** category for which the seller got the form.  
+  - `name` (required).  
+  - `description`, `price`, `currency`, `tag`, `availability` (optional).  
+  - **`extra_info`** (required from form) – key-value object; keys match `field_name` in schema. Example: `{"brand": "X", "model": "Y", "condition": "used"}`.  
+  - `location` (optional): `{ "state": "...", "district": "..." }`.  
+  - `images[]` (optional) multipart.
+- **Validation:** If the category has a form config, required fields from the schema must be present in `extra_info`.
+- **Storage:**
+  - **Seller side:** `SellerProduct.extra_info` stores the same key-value (for seller’s own view).
+  - **Buyer side:** Each key-value in `extra_info` is stored as a **ProductSpecification** row (`key`, `value`). The existing product detail API returns `product_specifications` as a dict, so buyers see these as proper product details (Indiamart-style).
 
-## ✨ Features Implemented
+### 5. No other product APIs
 
-✅ Dynamic form configuration per category
-✅ Field-level validation
-✅ Multiple field types support
-✅ Seller product creation
-✅ Product status tracking
-✅ Image upload support (placeholder)
-✅ Admin form management
-✅ Seller product management
-✅ Swagger documentation
-✅ Admin panel integration
-✅ Permission-based access control
+- Only **POST /products/** exists. No list, get, update, or delete product endpoints in seller portal.
 
-## 🔮 Future Enhancements
+---
 
-- [ ] Approval workflow implementation
-- [ ] Image upload to cloud storage
-- [ ] Product update functionality
-- [ ] Bulk product operations
-- [ ] Product templates
-- [ ] Seller dashboard/analytics
+## Database models (seller portal)
 
+- **CategoryFormConfig** – One per (leaf) category. Fields: `category` (OneToOne), `is_active`, **`schema`** (JSON array of field definitions). No separate FormField table; everything is in `schema`.
+- **SellerProduct** – `extra_info` (JSON key-value) holds the form submission. Linked to `Product`; product has **ProductSpecification** rows created from `extra_info` for buyer display.
+
+---
+
+## How buyers see product details
+
+- Product is stored in `olmachine_products.Product` with related **ProductSpecification** rows created from `extra_info` (key → `key`, value → `value`).
+- Existing product APIs (e.g. product detail by id) return `product_specifications` as a dictionary. Frontend can render this like Indiamart (table or list of key-value rows). No extra API change needed for buyer side.
+
+---
+
+## Admin
+
+- **Category Form Configuration** – Admin can add/edit form config per category: select category (leaf), set `is_active`, and edit **schema** (JSON array of field definitions). Same schema format as above.
+
+---
+
+## Summary
+
+| # | API | Purpose |
+|---|-----|--------|
+| 1 | GET `/categories/roots/` | Show root categories (no parent). |
+| 2 | GET `/categories/children/<code>/` | Drill down (max 5 levels). |
+| 3 | GET `/form/<category_code>/` | When leaf selected, get form schema for frontend. |
+| 4 | POST `/products/` with `extra_info` | Submit form as key-value; stored in `extra_info` and ProductSpecification for buyer. |
+
+No other seller-portal APIs (no product list, detail, update, delete).
+
+Form config is **one JSON field** per category (`schema`). Seller submission is **one key-value object** (`extra_info`). Buyer listing uses existing **product_specifications** built from that key-value.
