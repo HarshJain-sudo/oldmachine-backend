@@ -1,0 +1,338 @@
+{
+  "swagger": "2.0",
+  "host": "127.0.0.1:8000",
+  "basePath": "/api/seller-portal/",
+  "info": {
+    "version": "1.0.0",
+    "title": "Seller Portal API",
+    "description": "Seller Portal OpenAPI Specification. Flow: GET roots → GET children (drill down) → GET form config (leaf) → POST products (submit)."
+  },
+  "schemes": ["http", "https"],
+  "consumes": ["application/json"],
+  "produces": ["application/json"],
+  "securityDefinitions": {
+    "Bearer": {
+      "type": "apiKey",
+      "in": "header",
+      "name": "Authorization",
+      "description": "JWT or Bearer token. Example: Bearer <token>"
+    }
+  },
+  "security": [{ "Bearer": [] }],
+  "definitions": {
+    "CategoryItem": {
+      "type": "object",
+      "description": "Single category in tree (roots or children)",
+      "properties": {
+        "category_code": { "type": "string", "description": "Unique category code" },
+        "category_name": { "type": "string", "description": "Display name" },
+        "description": { "type": "string" },
+        "image_url": { "type": "string", "format": "uri" },
+        "level": { "type": "integer", "description": "Depth in tree (0 = root)" },
+        "parent_category_code": { "type": "string", "nullable": true },
+        "parent_category_name": { "type": "string", "nullable": true },
+        "full_path": { "type": "string", "example": "Electronics > Mobile Phones > Smartphones" },
+        "has_children": { "type": "boolean", "description": "True if category has sub-categories" },
+        "is_leaf": { "type": "boolean", "description": "True if no children (leaf); use form config for this category" }
+      },
+      "required": ["category_code", "category_name", "level", "has_children", "is_leaf"]
+    },
+    "FormFieldSchemaItem": {
+      "type": "object",
+      "description": "Single field in form schema (frontend uses this to render form)",
+      "properties": {
+        "field_name": { "type": "string", "description": "Key to use in extra_info on submit" },
+        "field_label": { "type": "string", "description": "Display label" },
+        "field_type": { "type": "string", "enum": ["text", "number", "textarea", "select", "radio", "checkbox", "date", "email", "url"] },
+        "is_required": { "type": "boolean", "default": false },
+        "order": { "type": "integer", "description": "Display order" },
+        "options": {
+          "type": "array",
+          "items": { "type": "object", "properties": { "value": { "type": "string" }, "label": { "type": "string" } } },
+          "description": "For select/radio"
+        },
+        "placeholder": { "type": "string" },
+        "help_text": { "type": "string" }
+      },
+      "required": ["field_name", "field_label", "field_type"]
+    },
+    "FormConfigResponse": {
+      "type": "object",
+      "description": "Form configuration for a leaf category",
+      "properties": {
+        "id": { "type": "string", "format": "uuid" },
+        "category": { "type": "string", "format": "uuid" },
+        "category_code": { "type": "string" },
+        "category_name": { "type": "string" },
+        "is_active": { "type": "boolean" },
+        "schema": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/FormFieldSchemaItem" },
+          "description": "Array of field definitions for frontend to render form"
+        },
+        "is_leaf": { "type": "boolean", "description": "Always true when this endpoint returns" }
+      },
+      "required": ["category_code", "category_name", "schema", "is_leaf"]
+    },
+    "CreateProductRequestBody": {
+      "type": "object",
+      "description": "Request body for creating a seller product (after form is filled)",
+      "properties": {
+        "category_code": { "type": "string", "description": "Leaf category code (same as used in GET form)" },
+        "name": { "type": "string", "description": "Product name" },
+        "description": { "type": "string" },
+        "price": { "type": "number", "format": "decimal" },
+        "currency": { "type": "string", "default": "INR" },
+        "tag": { "type": "string" },
+        "availability": { "type": "string", "default": "In Stock" },
+        "extra_info": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Key-value from form; keys = field_name from schema. Example: {\"brand\": \"X\", \"model\": \"Y\", \"condition\": \"used\"}"
+        },
+        "location": {
+          "type": "object",
+          "properties": {
+            "state": { "type": "string" },
+            "district": { "type": "string" }
+          }
+        }
+      },
+      "required": ["category_code", "name"]
+    },
+    "ProductDetails": {
+      "type": "object",
+      "description": "Nested product summary (from olmachine_products)",
+      "properties": {
+        "id": { "type": "string", "format": "uuid" },
+        "name": { "type": "string" },
+        "product_code": { "type": "string" },
+        "description": { "type": "string" },
+        "price": { "type": "string" },
+        "currency": { "type": "string" },
+        "tag": { "type": "string" },
+        "availability": { "type": "string" },
+        "product_specifications": { "type": "object", "additionalProperties": { "type": "string" } }
+      }
+    },
+    "CreateProductSuccessResponse": {
+      "type": "object",
+      "description": "Response after successful product creation",
+      "properties": {
+        "id": { "type": "string", "format": "uuid", "description": "SellerProduct id" },
+        "product": { "type": "string", "format": "uuid", "description": "Product id" },
+        "product_details": { "$ref": "#/definitions/ProductDetails" },
+        "seller": { "type": "string", "format": "uuid" },
+        "seller_name": { "type": "string" },
+        "status": { "type": "string", "enum": ["draft", "pending_approval", "approved", "rejected", "listed"] },
+        "rejection_reason": { "type": "string", "nullable": true },
+        "approved_by": { "type": "string", "format": "uuid", "nullable": true },
+        "approved_by_name": { "type": "string", "nullable": true },
+        "approved_at": { "type": "string", "format": "date-time", "nullable": true },
+        "extra_info": { "type": "object", "additionalProperties": true },
+        "created_at": { "type": "string", "format": "date-time" },
+        "updated_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "product", "status", "extra_info"]
+    },
+    "RootCategoriesSuccessResponse": {
+      "type": "object",
+      "description": "Response for GET /categories/roots/",
+      "properties": {
+        "categories": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/CategoryItem" }
+        }
+      },
+      "required": ["categories"]
+    },
+    "CategoryChildrenSuccessResponse": {
+      "type": "object",
+      "description": "Response for GET /categories/children/{category_code}/",
+      "properties": {
+        "categories": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/CategoryItem" }
+        }
+      },
+      "required": ["categories"]
+    },
+    "FormConfigSuccessResponse": {
+      "type": "object",
+      "description": "Response for GET /form/{category_code}/",
+      "properties": {
+        "id": { "type": "string", "format": "uuid" },
+        "category": { "type": "string", "format": "uuid" },
+        "category_code": { "type": "string" },
+        "category_name": { "type": "string" },
+        "is_active": { "type": "boolean" },
+        "schema": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/FormFieldSchemaItem" }
+        },
+        "is_leaf": { "type": "boolean" }
+      },
+      "required": ["category_code", "category_name", "schema", "is_leaf"]
+    },
+    "ErrorResponse": {
+      "type": "object",
+      "description": "Standard error response",
+      "properties": {
+        "response": { "type": "string", "description": "Human-readable message" },
+        "http_status_code": { "type": "integer" },
+        "res_status": { "type": "string", "description": "Machine-readable status code" }
+      },
+      "required": ["response", "http_status_code", "res_status"]
+    }
+  },
+  "responses": {
+    "RootCategories200": {
+      "description": "List of root categories",
+      "schema": { "$ref": "#/definitions/RootCategoriesSuccessResponse" }
+    },
+    "CategoryChildren200": {
+      "description": "List of child categories",
+      "schema": { "$ref": "#/definitions/CategoryChildrenSuccessResponse" }
+    },
+    "FormConfig200": {
+      "description": "Form configuration with schema for frontend",
+      "schema": { "$ref": "#/definitions/FormConfigSuccessResponse" }
+    },
+    "CreateProduct201": {
+      "description": "Product created successfully",
+      "schema": { "$ref": "#/definitions/CreateProductSuccessResponse" }
+    },
+    "Error400": {
+      "description": "Bad request",
+      "schema": {
+        "allOf": [
+          { "$ref": "#/definitions/ErrorResponse" },
+          {
+            "properties": {
+              "res_status": {
+                "type": "string",
+                "enum": ["INVALID_DATA", "VALIDATION_ERROR", "NOT_LEAF_CATEGORY", "INVALID_STATUS"]
+              }
+            }
+          }
+        ]
+      }
+    },
+    "Error404": {
+      "description": "Not found",
+      "schema": {
+        "allOf": [
+          { "$ref": "#/definitions/ErrorResponse" },
+          {
+            "properties": {
+              "res_status": {
+                "type": "string",
+                "enum": ["CATEGORY_NOT_FOUND", "FORM_CONFIG_NOT_FOUND", "SELLER_PROFILE_NOT_FOUND"]
+              }
+            }
+          }
+        ]
+      }
+    },
+    "Error401": {
+      "description": "Unauthorized",
+      "schema": { "$ref": "#/definitions/ErrorResponse" }
+    },
+    "Error500": {
+      "description": "Internal server error",
+      "schema": {
+        "allOf": [
+          { "$ref": "#/definitions/ErrorResponse" },
+          { "properties": { "res_status": { "type": "string", "enum": ["ERROR"] } } }
+        ]
+      }
+    }
+  },
+  "paths": {
+    "/categories/roots/": {
+      "get": {
+        "summary": "List root categories",
+        "description": "Returns categories that have no parent. Seller selects one, then calls GET children for that category until a leaf is reached (max 5 levels).",
+        "operationId": "get_root_categories",
+        "tags": ["Seller Portal"],
+        "security": [{ "Bearer": [] }],
+        "parameters": [],
+        "responses": {
+          "200": { "$ref": "#/responses/RootCategories200" },
+          "401": { "$ref": "#/responses/Error401" }
+        }
+      }
+    },
+    "/categories/children/{category_code}/": {
+      "get": {
+        "summary": "List child categories",
+        "description": "Returns direct sub-categories of the given category. Use until the selected category has no children (is_leaf). Then call GET form for that category_code.",
+        "operationId": "get_category_children",
+        "tags": ["Seller Portal"],
+        "security": [{ "Bearer": [] }],
+        "parameters": [
+          {
+            "name": "category_code",
+            "in": "path",
+            "required": true,
+            "type": "string",
+            "description": "Category code (from roots or previous children response)"
+          }
+        ],
+        "responses": {
+          "200": { "$ref": "#/responses/CategoryChildren200" },
+          "401": { "$ref": "#/responses/Error401" },
+          "404": { "$ref": "#/responses/Error404" }
+        }
+      }
+    },
+    "/form/{category_code}/": {
+      "get": {
+        "summary": "Get form config for leaf category",
+        "description": "Returns form schema for the given category. Only valid for leaf categories (no children). Frontend uses schema to render the form; submitted values go in extra_info when calling POST /products/.",
+        "operationId": "get_form_config",
+        "tags": ["Seller Portal"],
+        "security": [{ "Bearer": [] }],
+        "parameters": [
+          {
+            "name": "category_code",
+            "in": "path",
+            "required": true,
+            "type": "string",
+            "description": "Leaf category code"
+          }
+        ],
+        "responses": {
+          "200": { "$ref": "#/responses/FormConfig200" },
+          "400": { "$ref": "#/responses/Error400" },
+          "401": { "$ref": "#/responses/Error401" },
+          "404": { "$ref": "#/responses/Error404" }
+        }
+      }
+    },
+    "/products/": {
+      "post": {
+        "summary": "Create seller product",
+        "description": "Create a product after seller has filled the form. category_code must be the leaf category; extra_info must contain key-value for each field_name from the form schema (required fields validated if form config exists).",
+        "operationId": "create_seller_product",
+        "tags": ["Seller Portal"],
+        "security": [{ "Bearer": [] }],
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": { "$ref": "#/definitions/CreateProductRequestBody" },
+            "description": "Product data and form key-value in extra_info"
+          }
+        ],
+        "responses": {
+          "201": { "$ref": "#/responses/CreateProduct201" },
+          "400": { "$ref": "#/responses/Error400" },
+          "401": { "$ref": "#/responses/Error401" },
+          "500": { "$ref": "#/responses/Error500" }
+        }
+      }
+    }
+  }
+}
