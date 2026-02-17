@@ -80,3 +80,57 @@ class OAuthService:
             'refresh_token': refresh_token.token,
         }
 
+    @staticmethod
+    def refresh_access_token(refresh_token_string):
+        """
+        Exchange a refresh token for a new access token.
+
+        Args:
+            refresh_token_string: The refresh token string from verify_otp.
+
+        Returns:
+            dict: Dictionary with access_token and refresh_token (same refresh
+                  token string, valid for further refreshes).
+
+        Raises:
+            ValueError: When refresh token is missing, invalid, or revoked.
+        """
+        if not refresh_token_string or not str(refresh_token_string).strip():
+            raise ValueError("Refresh token is required")
+
+        refresh_token = RefreshToken.objects.filter(
+            token=refresh_token_string.strip(),
+            revoked__isnull=True,
+        ).select_related('user', 'application', 'access_token').first()
+
+        if not refresh_token:
+            raise ValueError("Invalid or expired refresh token")
+
+        user = refresh_token.user
+        application = refresh_token.application
+        old_access_token = refresh_token.access_token
+
+        # Create new access token
+        new_access_token = AccessToken.objects.create(
+            user=user,
+            application=application,
+            token=generate_token(),
+            expires=timezone.now() + timedelta(
+                seconds=oauth2_settings.ACCESS_TOKEN_EXPIRE_SECONDS
+            ),
+            scope='read write',
+        )
+
+        # Revoke old access token (deletes it) and link refresh token to new one
+        if old_access_token:
+            old_access_token.revoke()
+        refresh_token.access_token = new_access_token
+        refresh_token.save(update_fields=['access_token'])
+
+        logger.info(f"Refreshed access token for user {user.phone_number}")
+
+        return {
+            'access_token': new_access_token.token,
+            'refresh_token': refresh_token.token,
+        }
+

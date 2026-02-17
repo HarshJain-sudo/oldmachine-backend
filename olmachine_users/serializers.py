@@ -88,3 +88,9 @@ class VerifyOTPSerializer(serializers.Serializer):
             raise serializers.ValidationError(str(e))
         return value
 
+
+class RefreshTokenSerializer(serializers.Serializer):
+    """Serializer for refresh token request."""
+
+    refresh_token = serializers.CharField(required=True, allow_blank=False)
+

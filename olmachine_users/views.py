@@ -11,7 +11,8 @@ from drf_yasg import openapi
 from django.db import transaction
 from olmachine_users.serializers import (
     LoginOrSignUpSerializer,
-    VerifyOTPSerializer
+    VerifyOTPSerializer,
+    RefreshTokenSerializer,
 )
 from olmachine_users.models import User
 from olmachine_users.services.otp_service import OTPService
@@ -229,6 +230,81 @@ class VerifyOTPView(APIView):
             return error_response(
                 message="OTP verification failed",
                 res_status="OTP_VERIFICATION_FAILED",
+                http_status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+
+class RefreshTokenView(APIView):
+    """
+    API view to exchange a refresh token for a new access token.
+
+    POST /api/marketplace/refresh_token/v1/
+    """
+
+    permission_classes = [AllowAny]
+
+    @swagger_auto_schema(
+        operation_summary="Refresh access token",
+        operation_description=(
+            "Exchange a valid refresh token (from verify_otp) for a new "
+            "access token. Returns the new access_token and the same "
+            "refresh_token for future refreshes. No client_id/client_secret."
+        ),
+        request_body=RefreshTokenSerializer,
+        responses={
+            200: openapi.Response(
+                description="New tokens returned",
+                examples={
+                    "application/json": {
+                        "access_token": "new-token-string",
+                        "refresh_token": "refresh-token-string",
+                    }
+                }
+            ),
+            400: openapi.Response(
+                description="Bad request - Missing or invalid/expired refresh token"
+            ),
+            500: openapi.Response(
+                description="Internal server error"
+            ),
+        },
+        tags=['Authentication']
+    )
+    def post(self, request):
+        """
+        Handle refresh token request.
+
+        Returns:
+            Response: New access_token and refresh_token on success.
+        """
+        serializer = RefreshTokenSerializer(data=request.data)
+
+        if not serializer.is_valid():
+            return error_response(
+                message="Refresh token is required",
+                res_status="INVALID_REFRESH_TOKEN",
+                http_status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            tokens = OAuthService.refresh_access_token(
+                serializer.validated_data['refresh_token']
+            )
+            return success_response(
+                data=tokens,
+                http_status_code=status.HTTP_200_OK
+            )
+        except ValueError as e:
+            return error_response(
+                message=str(e) or "Invalid or expired refresh token",
+                res_status="INVALID_REFRESH_TOKEN",
+                http_status_code=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            logger.error(f"Error in refresh token: {str(e)}")
+            return error_response(
+                message="Invalid or expired refresh token",
+                res_status="INVALID_REFRESH_TOKEN",
                 http_status_code=status.HTTP_400_BAD_REQUEST
             )
 
