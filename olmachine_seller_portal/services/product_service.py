@@ -15,6 +15,7 @@ from olmachine_products.models import (
 from olmachine_seller_portal.models import SellerProduct
 
 logger = logging.getLogger(__name__)
+UNSET = object()
 
 
 class ProductService:
@@ -222,4 +223,149 @@ class ProductService:
         # In production, upload to S3/Cloudinary and return URL
         import uuid
         return f"https://example.com/images/{uuid.uuid4()}.jpg"
+
+    @staticmethod
+    def update_seller_product(
+        seller_product,
+        category_code=UNSET,
+        name=UNSET,
+        description=UNSET,
+        price=UNSET,
+        currency=UNSET,
+        tag=UNSET,
+        availability=UNSET,
+        extra_info=UNSET,
+        images=UNSET,
+        location_data=UNSET
+    ):
+        """
+        Update an existing seller product.
+
+        Args:
+            seller_product: SellerProduct instance
+            category_code: New category code (optional)
+            name: Product name (optional)
+            description: Product description (optional)
+            price: Product price (optional)
+            currency: Currency code (optional)
+            tag: Product tag (optional)
+            availability: Availability status (optional)
+            extra_info: Product specifications as key-value dict (optional)
+            images: List of image files (optional)
+            location_data: Location data dict (optional)
+
+        Returns:
+            SellerProduct: Updated seller product
+
+        Raises:
+            ValueError: If update fails
+        """
+        try:
+            with transaction.atomic():
+                product = seller_product.product
+
+                if category_code is not UNSET:
+                    category = Category.objects.get(
+                        category_code=category_code,
+                        is_active=True
+                    )
+                    if not category.is_leaf_category():
+                        raise ValueError(
+                            "Products can only be assigned to leaf categories "
+                            "(categories with no sub-categories). "
+                            f"Category '{category.name}' has sub-categories."
+                        )
+                    product.category = category
+
+                if name is not UNSET:
+                    product.name = name
+                if description is not UNSET:
+                    product.description = description
+                if price is not UNSET:
+                    product.price = price
+                if currency is not UNSET:
+                    product.currency = currency
+                if tag is not UNSET:
+                    product.tag = tag
+                if availability is not UNSET:
+                    product.availability = availability
+
+                if location_data is not UNSET:
+                    location = None
+                    if location_data:
+                        location, _ = Location.objects.get_or_create(
+                            state=location_data.get('state', ''),
+                            district=location_data.get('district'),
+                            defaults={
+                                'state': location_data.get('state', ''),
+                                'district': location_data.get('district')
+                            }
+                        )
+                    product.location = location
+
+                product.save()
+
+                if extra_info is not UNSET:
+                    seller_product.extra_info = extra_info
+                    seller_product.save(update_fields=['extra_info'])
+                    ProductService._replace_product_specifications(
+                        product=product,
+                        extra_info=extra_info
+                    )
+
+                if images is not UNSET:
+                    product.images.all().delete()
+                    if images:
+                        ProductService._save_product_images(
+                            product=product,
+                            images=images
+                        )
+
+                seller_product.refresh_from_db()
+                logger.info(
+                    f"Updated seller product {seller_product.id} for "
+                    f"seller {seller_product.seller.name}"
+                )
+                return seller_product
+        except Exception as e:
+            logger.error(
+                f"Error updating seller product: {str(e)}",
+                exc_info=True
+            )
+            raise
+
+    @staticmethod
+    def de_list_seller_product(seller_product):
+        """
+        De-list seller product by disabling buyer-facing product.
+
+        Args:
+            seller_product: SellerProduct instance
+        """
+        with transaction.atomic():
+            product = seller_product.product
+            product.is_active = False
+            product.save(update_fields=['is_active', 'updated_at'])
+
+            if seller_product.status == 'listed':
+                seller_product.status = 'draft'
+                seller_product.save(update_fields=['status', 'updated_at'])
+
+    @staticmethod
+    def _replace_product_specifications(product, extra_info):
+        """
+        Replace product specifications from extra_info payload.
+
+        Args:
+            product: Product instance
+            extra_info: Specification dictionary
+        """
+        ProductSpecification.objects.filter(product=product).delete()
+        for key, value in (extra_info or {}).items():
+            if value is not None and value != '':
+                ProductSpecification.objects.create(
+                    product=product,
+                    key=str(key),
+                    value=str(value)
+                )
 

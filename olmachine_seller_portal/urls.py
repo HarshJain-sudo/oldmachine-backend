@@ -7,12 +7,12 @@ from olmachine_seller_portal.views import (
     RootCategoriesView,
     CategoryChildrenView,
     FormConfigView,
-    SellerProductCreateView,
+    SellerProductListCreateView,
+    SellerProductDetailView,
 )
 
 app_name = 'olmachine_seller_portal'
 
-# Only 4 APIs per requirement: roots -> children -> form config -> create product
 urlpatterns = [
     path(
         'categories/roots/',
@@ -31,8 +31,13 @@ urlpatterns = [
     ),
     path(
         'products/',
-        SellerProductCreateView.as_view(),
-        name='seller_product_create'
+        SellerProductListCreateView.as_view(),
+        name='seller_product_list_create'
+    ),
+    path(
+        'products/<uuid:seller_product_id>/',
+        SellerProductDetailView.as_view(),
+        name='seller_product_detail'
     ),
 ]
 

@@ -126,11 +126,9 @@ class OAuthService:
             old_access_token.revoke()
         refresh_token.access_token = new_access_token
         refresh_token.save(update_fields=['access_token'])
-
         logger.info(f"Refreshed access token for user {user.phone_number}")
 
         return {
             'access_token': new_access_token.token,
             'refresh_token': refresh_token.token,
         }
-
