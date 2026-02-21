@@ -475,6 +475,88 @@ SORT_CHOICES = ('newest_first', 'price_asc', 'price_desc')
 DEFAULT_LIMIT = 10
 MAX_LIMIT = 100
 
+# OpenAPI schemas for product listings search response
+_seller_detail_schema = openapi.Schema(
+    type=openapi.TYPE_OBJECT,
+    properties={'name': openapi.Schema(type=openapi.TYPE_STRING)},
+    description='Seller name'
+)
+_location_detail_schema = openapi.Schema(
+    type=openapi.TYPE_OBJECT,
+    properties={
+        'state': openapi.Schema(type=openapi.TYPE_STRING),
+        'district': openapi.Schema(
+            type=openapi.TYPE_STRING, description='District (nullable)'
+        ),
+    },
+    description='Product location'
+)
+_product_detail_item_schema = openapi.Schema(
+    type=openapi.TYPE_OBJECT,
+    description='Product item in list',
+    properties={
+        'name': openapi.Schema(type=openapi.TYPE_STRING),
+        'product_code': openapi.Schema(type=openapi.TYPE_STRING),
+        'seller_details': _seller_detail_schema,
+        'tag': openapi.Schema(
+            type=openapi.TYPE_STRING,
+            description='Tag e.g. New, Best Seller (nullable)'
+        ),
+        'image_urls': openapi.Schema(
+            type=openapi.TYPE_ARRAY,
+            items=openapi.Schema(type=openapi.TYPE_STRING),
+            description='Ordered list of image URLs'
+        ),
+        'location_details': openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            description='Location (nullable if not set)',
+            properties={
+                'state': openapi.Schema(type=openapi.TYPE_STRING),
+                'district': openapi.Schema(type=openapi.TYPE_STRING),
+            }
+        ),
+        'product_specifications': openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            additional_properties=openapi.Schema(type=openapi.TYPE_STRING),
+            description='Key-value specs e.g. condition, year'
+        ),
+        'price': openapi.Schema(
+            type=openapi.TYPE_STRING,
+            description='Price as string (nullable)'
+        ),
+        'currency': openapi.Schema(type=openapi.TYPE_STRING),
+    }
+)
+_breadcrumb_item_schema = openapi.Schema(
+    type=openapi.TYPE_OBJECT,
+    properties={
+        'name': openapi.Schema(type=openapi.TYPE_STRING),
+        'category_code': openapi.Schema(type=openapi.TYPE_STRING),
+    },
+    description='Breadcrumb segment'
+)
+_product_listings_response_schema = openapi.Schema(
+    type=openapi.TYPE_OBJECT,
+    description='Product listings search response (body)',
+    properties={
+        'products_details': openapi.Schema(
+            type=openapi.TYPE_ARRAY,
+            items=_product_detail_item_schema,
+            description='List of product details'
+        ),
+        'total_count': openapi.Schema(
+            type=openapi.TYPE_STRING,
+            description='Total matching products before pagination'
+        ),
+        'breadcrumbs': openapi.Schema(
+            type=openapi.TYPE_ARRAY,
+            items=_breadcrumb_item_schema,
+            description='Category path when category_code was sent (optional)'
+        ),
+    },
+    required=['products_details', 'total_count'],
+)
+
 
 class ProductListingsSearchView(APIView):
     """
@@ -543,15 +625,32 @@ class ProductListingsSearchView(APIView):
         responses={
             200: openapi.Response(
                 description="Success",
+                schema=_product_listings_response_schema,
                 examples={
                     "application/json": {
-                        "data": {
-                            "products_details": [],
-                            "total_count": "42",
-                            "breadcrumbs": [
-                                {"name": "Cat", "category_code": "C1"}
-                            ],
-                        }
+                        "products_details": [
+                            {
+                                "name": "Product Name",
+                                "product_code": "PROD001",
+                                "seller_details": {"name": "Seller Name"},
+                                "tag": "New",
+                                "image_urls": ["https://example.com/1.jpg"],
+                                "location_details": {
+                                    "state": "State",
+                                    "district": "District"
+                                },
+                                "product_specifications": {
+                                    "condition": "Excellent",
+                                    "year": "2022"
+                                },
+                                "price": "42500.00",
+                                "currency": "INR"
+                            }
+                        ],
+                        "total_count": "42",
+                        "breadcrumbs": [
+                            {"name": "Cat", "category_code": "C1"}
+                        ],
                     }
                 },
             ),
