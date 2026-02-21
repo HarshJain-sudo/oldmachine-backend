@@ -20,29 +20,28 @@ wheels/
 .installed.cfg
 *.egg
 
-# Virtual Environment
+# Virtual environment
 venv/
 env/
 ENV/
-.venv
+.venv/
 
 # Django
 *.log
 *.pot
 *.pyc
+*.sqlite3
 db.sqlite3
 db_beta.sqlite3
 db_local.sqlite3
 media/
 staticfiles/
+local_settings.py
 
-# Environment variables
+# Environment and secrets
 .env
 .env.local
 .env.*.local
-
-# Ignore anything starting with "env"
-env*
 
 # IDE
 .vscode/
@@ -57,5 +56,13 @@ Thumbs.db
 
 # Logs
 logs/
-*.log
 
+# Testing / coverage
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+
+# Cursor (optional; remove if you want to track Cursor config)
+# .cursor/

@@ -11,3 +11,4 @@ drf-yasg==1.21.7
 setuptools>=60,<70
 
 requests==2.31.0
+

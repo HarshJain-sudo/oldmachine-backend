@@ -2,7 +2,7 @@
 Local development environment settings for oldmachine_backend project.
 
 This environment is optimized for local development:
-- Uses SQLite database (no external setup required)
+- Uses Django default SQLite (no external database)
 - Debug mode enabled
 - Detailed logging
 - Relaxed security settings
@@ -21,28 +21,13 @@ ALLOWED_HOSTS = os.environ.get(
     '127.0.0.1,localhost,0.0.0.0,*'
 ).split(',')
 
-# Database Configuration
-# Use SQLite for local development (simple, no setup required)
+# Database: Django default SQLite (local only)
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db_local.sqlite3',  # noqa: F405
+        'NAME': BASE_DIR / 'db.sqlite3',  # noqa: F405
     }
 }
-
-# Optional: Use PostgreSQL if DB_* env vars are set
-# Uncomment below and comment SQLite above to use PostgreSQL
-# if all(os.environ.get(k) for k in ['DB_NAME', 'DB_USER', 'DB_PASSWORD', 'DB_HOST']):
-#     DATABASES = {
-#         'default': {
-#             'ENGINE': 'django.db.backends.postgresql',
-#             'NAME': os.environ.get('DB_NAME', 'postgres'),
-#             'USER': os.environ.get('DB_USER', 'postgres'),
-#             'PASSWORD': os.environ.get('DB_PASSWORD', ''),
-#             'HOST': os.environ.get('DB_HOST', 'localhost'),
-#             'PORT': os.environ.get('DB_PORT', '5432'),
-#         }
-#     }
 
 # OTP Configuration
 OTP_EXPIRY_SECONDS = 300  # 5 minutes

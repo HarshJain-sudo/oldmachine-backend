@@ -34,15 +34,15 @@ You need to set these in Vercel dashboard:
 
 ### Required Environment Variables:
 
+Beta uses **DATABASE_URL** only (e.g. AWS RDS PostgreSQL):
+
 ```bash
 DJANGO_ENV=beta
 SECRET_KEY=your-secret-key-here
-DB_NAME=postgres
-DB_USER=postgres
-DB_PASSWORD=4Bth38seXu/S@x@
-DB_HOST=db.wdcczvjigwrvdhzzpjwl.supabase.co
-DB_PORT=5432
+DATABASE_URL=postgres://USER:PASSWORD@your-rds-endpoint.region.rds.amazonaws.com:5432/DBNAME
 ```
+
+Optional for RDS SSL: `DB_SSLMODE=require`
 
 ### Optional (if using):
 ```bash
