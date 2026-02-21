@@ -24,18 +24,18 @@ Railway is much better suited for Django than Vercel. Here's how to deploy:
 
 ## Step 3: Add Environment Variables
 
-In Railway dashboard → Your Project → Variables:
+In Railway dashboard → Your Project → Variables.
+
+Beta/prod use **DATABASE_URL** only (e.g. AWS RDS PostgreSQL):
 
 ```bash
 DJANGO_ENV=beta
 SECRET_KEY=your-secret-key-here
-DB_NAME=postgres
-DB_USER=postgres
-DB_PASSWORD=4Bth38seXu/S@x@
-DB_HOST=db.wdcczvjigwrvdhzzpjwl.supabase.co
-DB_PORT=5432
+DATABASE_URL=postgres://USER:PASSWORD@your-rds-endpoint.region.rds.amazonaws.com:5432/DBNAME
 ALLOWED_HOSTS=*.railway.app,your-app-name.railway.app
 ```
+
+Optional for RDS SSL: `DB_SSLMODE=require`
 
 ## Step 4: Configure Build Settings
 
