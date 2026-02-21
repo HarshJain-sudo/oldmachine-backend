@@ -3,12 +3,13 @@
 from django.contrib import admin
 from .models import (
     Category,
-    Seller,
     Location,
     Product,
     ProductImage,
     ProductSpecification,
-    UserCategoryView
+    SavedSearch,
+    Seller,
+    UserCategoryView,
 )
 
 
@@ -132,4 +133,15 @@ class UserCategoryViewAdmin(admin.ModelAdmin):
     )
     readonly_fields = ('viewed_at', 'updated_at')
     ordering = ('-viewed_at',)
+
+
+@admin.register(SavedSearch)
+class SavedSearchAdmin(admin.ModelAdmin):
+    """Admin interface for SavedSearch model."""
+
+    list_display = ('id', 'user', 'name', 'category_code', 'created_at')
+    list_filter = ('created_at',)
+    search_fields = ('name', 'category_code', 'user__phone_number')
+    raw_id_fields = ('user',)
+    ordering = ('-created_at',)
 

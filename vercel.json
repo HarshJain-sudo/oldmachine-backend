@@ -14,5 +14,6 @@
   ],
   "env": {
     "DJANGO_ENV": "beta"
-  }
+  },
+  "buildCommand": "python manage.py migrate --noinput"
 }

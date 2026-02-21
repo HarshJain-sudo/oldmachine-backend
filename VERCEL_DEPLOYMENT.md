@@ -89,17 +89,17 @@ ALLOWED_HOSTS = os.environ.get(
 ).split(',')
 ```
 
-## Step 6: Run Migrations
+## Step 6: Migrations (automatic on deploy)
 
-After deployment, you need to run migrations:
+Migrations run **automatically** during each Vercel build. This is configured in `vercel.json`:
 
-```bash
-# Using Vercel CLI
-vercel env pull .env.local
-vercel exec -- python manage.py migrate
-
-# Or use Vercel dashboard → Functions → Run migrations
+```json
+"buildCommand": "python manage.py migrate --noinput"
 ```
+
+- **When**: After dependencies are installed and before the serverless function is deployed.
+- **Requirement**: `DATABASE_URL` must be set in Vercel (Project → Settings → Environment Variables) and your database must accept connections from Vercel’s build network. If the DB is not reachable during build, the deployment will fail.
+- **Manual run** (if needed): `vercel env pull .env.local` then `vercel exec -- python manage.py migrate --noinput`
 
 ## Alternative: Use Railway (Recommended for Django)
 
@@ -127,10 +127,7 @@ Railway is better suited for Django:
 
 ## Post-Deployment
 
-1. **Run migrations**:
-   ```bash
-   vercel exec -- python manage.py migrate
-   ```
+1. **Migrations**: Run automatically on each deploy (see Step 6). To run manually: `vercel exec -- python manage.py migrate --noinput`.
 
 2. **Create superuser**:
    ```bash
