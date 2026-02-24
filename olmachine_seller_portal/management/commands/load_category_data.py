@@ -1,23 +1,31 @@
 """
 Load category and form config data from a JSON file into Category and CategoryFormConfig.
 
+Standard dump: env_files/oldmachine_category_data_dump.json. Load it with
+  python manage.py load_category_data
+  python manage.py load_category_data --dry-run
+Or pass a path: python manage.py load_category_data /path/to/categories.json
+
 Expected JSON: array of objects with:
   name, category_code, parent_category_code (null or "" for root),
   order, description, image_url, is_active ("TRUE"/"FALSE" or bool),
   category_fields_config (optional): JSON string or array of field definitions.
-
-Usage:
-  python manage.py load_category_data /path/to/categories.json
-  python manage.py load_category_data /path/to/categories.json --dry-run
 """
 
 import json
 import os
+from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
 from olmachine_products.models import Category
 from olmachine_seller_portal.models import CategoryFormConfig
+
+DEFAULT_CATEGORY_DUMP_PATH = os.path.join(
+    settings.BASE_DIR,
+    "env_files",
+    "oldmachine_category_data_dump.json",
+)
 
 
 def _normalize_bool(value):
@@ -127,7 +135,12 @@ class Command(BaseCommand):
         parser.add_argument(
             "file_path",
             type=str,
-            help="Path to JSON file (array of category rows with category_fields_config).",
+            nargs="?",
+            default=None,
+            help=(
+                "Path to JSON file (array of category rows with category_fields_config). "
+                "Defaults to env_files/oldmachine_category_data_dump.json if omitted."
+            ),
         )
         parser.add_argument(
             "--dry-run",
@@ -136,7 +149,7 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        path = options["file_path"]
+        path = options["file_path"] or DEFAULT_CATEGORY_DUMP_PATH
         dry_run = options["dry_run"]
 
         if not os.path.isfile(path):

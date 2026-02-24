@@ -46,10 +46,8 @@ class LoginOrSignUpView(APIView):
                 description="OTP sent successfully",
                 examples={
                     "application/json": {
-                        "data": {
-                            "user_id": "uuid-string",
-                            "message": "OTP sent successfully"
-                        }
+                        "user_id": "uuid-string",
+                        "message": "OTP sent successfully"
                     }
                 }
             ),
@@ -148,12 +146,10 @@ class VerifyOTPView(APIView):
                 description="OTP verified successfully",
                 examples={
                     "application/json": {
-                        "data": {
-                            "access_token": "token-string",
-                            "refresh_token": "refresh-token-string",
-                            "token_type": "Bearer",
-                            "expires_in": 86400
-                        }
+                        "access_token": "token-string",
+                        "refresh_token": "refresh-token-string",
+                        "token_type": "Bearer",
+                        "expires_in": 86400
                     }
                 }
             ),

@@ -284,25 +284,23 @@ class CategoryProductsDetailsView(APIView):
                 description="Successfully retrieved products",
                 examples={
                     "application/json": {
-                        "data": {
-                            "products_details": [
-                                {
-                                    "name": "Product Name",
-                                    "product_code": "PROD001",
-                                    "seller_details": {"name": "Seller Name"},
-                                    "tag": "New",
-                                    "image_urls": ["https://example.com/image.jpg"],
-                                    "location_details": {
-                                        "state": "State",
-                                        "district": "District"
-                                    },
-                                    "product_specifications": {
-                                        "key": "value"
-                                    }
+                        "products_details": [
+                            {
+                                "name": "Product Name",
+                                "product_code": "PROD001",
+                                "seller_details": {"name": "Seller Name"},
+                                "tag": "New",
+                                "image_urls": ["https://example.com/image.jpg"],
+                                "location_details": {
+                                    "state": "State",
+                                    "district": "District"
+                                },
+                                "product_specifications": {
+                                    "key": "value"
                                 }
-                            ],
-                            "total_count": "50"
-                        }
+                            }
+                        ],
+                        "total_count": "50"
                     }
                 }
             ),
@@ -494,24 +492,22 @@ class ProductDetailsView(APIView):
                 description="Successfully retrieved product details",
                 examples={
                     "application/json": {
-                        "data": {
-                            "name": "Product Name",
-                            "product_code": "PROD001",
-                            "description": "Product description",
-                            "seller_details": {"name": "Seller Name"},
-                            "tag": "New",
-                            "image_urls": ["https://example.com/image.jpg"],
-                            "location_details": {
-                                "state": "State",
-                                "district": "District"
-                            },
-                            "product_specifications": {
-                                "key": "value"
-                            },
-                            "price": "1000.00",
-                            "currency": "USD",
-                            "availability": True
-                        }
+                        "name": "Product Name",
+                        "product_code": "PROD001",
+                        "description": "Product description",
+                        "seller_details": {"name": "Seller Name"},
+                        "tag": "New",
+                        "image_urls": ["https://example.com/image.jpg"],
+                        "location_details": {
+                            "state": "State",
+                            "district": "District"
+                        },
+                        "product_specifications": {
+                            "key": "value"
+                        },
+                        "price": "1000.00",
+                        "currency": "USD",
+                        "availability": True
                     }
                 }
             ),

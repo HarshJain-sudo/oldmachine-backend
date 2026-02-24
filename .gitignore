@@ -59,3 +59,28 @@ Thumbs.db
 logs/
 *.log
 
+<<<<<<< Updated upstream
+=======
+# Testing / coverage
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+
+# Cursor — ignore everything in .cursor folder
+.cursor/
+
+# ignore any thing which starts with name env
+env*/
+env.*/
+env.*.*/
+env.*.local
+env.local
+env.development
+env.production
+env.test
+env.development.local
+env.production.local
+env.test.local
+>>>>>>> Stashed changes

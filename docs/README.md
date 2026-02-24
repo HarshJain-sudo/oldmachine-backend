@@ -21,3 +21,13 @@ This folder contains **module-level documentation** for the OldMachine Django ap
 | **olmachine_seller_portal** | [OLMACHINE_SELLER_PORTAL.md](./OLMACHINE_SELLER_PORTAL.md) | Seller flow: root/child categories, form config, create product |
 
 Each doc is descriptive and covers **all user flows** for that app.
+
+## Frontend API guide
+
+- **[FRONTEND_API_GUIDE.md](./FRONTEND_API_GUIDE.md)** — Flows and endpoints for the frontend: auth, buyer (categories, search, product detail, saved searches), seller (category tree, form config, create/list/update products). Use with Swagger/ReDoc for full schemas.
+
+## Seeding
+
+- **Categories:** To load the standard category dump run
+  `python manage.py load_category_data` (uses
+  `env_files/oldmachine_category_data_dump.json` by default).
