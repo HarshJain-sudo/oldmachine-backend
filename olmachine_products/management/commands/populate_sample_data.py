@@ -6,6 +6,10 @@ Usage:
 """
 
 from django.core.management.base import BaseCommand
+from olmachine_products.constants import (
+    PRODUCT_SPEC_CONDITION_KEY,
+    PRODUCT_SPEC_YEAR_KEY,
+)
 from olmachine_products.models import (
     Category,
     Seller,
@@ -761,6 +765,31 @@ class Command(BaseCommand):
                         f'Product already exists: {product.name}'
                     )
                 )
+
+        # Backfill condition and year specs for buyer filter testing (all products)
+        conditions = ('Excellent', 'Good', 'Fair', 'Refurbished')
+        for idx, product in enumerate(Product.objects.all()):
+            if not product.specifications.filter(
+                key=PRODUCT_SPEC_CONDITION_KEY
+            ).exists():
+                ProductSpecification.objects.create(
+                    product=product,
+                    key=PRODUCT_SPEC_CONDITION_KEY,
+                    value=conditions[idx % len(conditions)]
+                )
+            if not product.specifications.filter(
+                key=PRODUCT_SPEC_YEAR_KEY
+            ).exists():
+                ProductSpecification.objects.create(
+                    product=product,
+                    key=PRODUCT_SPEC_YEAR_KEY,
+                    value=str(2018 + (idx % 6))
+                )
+        self.stdout.write(
+            self.style.SUCCESS(
+                'Backfilled condition and year specs for all products.'
+            )
+        )
 
         # Summary
         self.stdout.write(

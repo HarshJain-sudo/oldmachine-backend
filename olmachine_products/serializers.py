@@ -9,7 +9,8 @@ from olmachine_products.models import (
     ProductImage,
     ProductSpecification,
     Seller,
-    Location
+    Location,
+    SavedSearch,
 )
 from olmachine_products.services.recommendation_service import (
     RecommendationService
@@ -117,6 +118,7 @@ class CategoryProductDetailSerializer(serializers.ModelSerializer):
         read_only=True
     )
     product_specifications = serializers.SerializerMethodField()
+    price = serializers.SerializerMethodField()
 
     class Meta:
         """Meta options for CategoryProductDetailSerializer."""
@@ -129,7 +131,9 @@ class CategoryProductDetailSerializer(serializers.ModelSerializer):
             'tag',
             'image_urls',
             'location_details',
-            'product_specifications'
+            'product_specifications',
+            'price',
+            'currency'
         ]
 
     def get_image_urls(self, obj):
@@ -146,6 +150,10 @@ class CategoryProductDetailSerializer(serializers.ModelSerializer):
             spec.key: spec.value
             for spec in specs
         }
+
+    def get_price(self, obj):
+        """Get price as string for consistency with ProductDetailsSerializer."""
+        return str(obj.price) if obj.price else None
 
 
 class ProductDetailsSerializer(serializers.ModelSerializer):
@@ -205,4 +213,31 @@ class RecommendedCategorySerializer(serializers.Serializer):
     category_code = serializers.CharField()
     category_image_url = serializers.URLField(allow_null=True)
     products = ProductDetailSerializer(many=True)
+
+
+class SavedSearchSerializer(serializers.ModelSerializer):
+    """Read serializer for SavedSearch."""
+
+    class Meta:
+        """Meta options for SavedSearchSerializer."""
+
+        model = SavedSearch
+        fields = ['id', 'name', 'category_code', 'query_params', 'created_at']
+        read_only_fields = ['id', 'created_at']
+
+
+class SavedSearchCreateSerializer(serializers.Serializer):
+    """Serializer for creating SavedSearch (POST body)."""
+
+    name = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    category_code = serializers.CharField(
+        max_length=50, required=False, allow_blank=True
+    )
+    query_params = serializers.JSONField(default=dict)
+
+    def validate_query_params(self, value):
+        """Ensure query_params is a dictionary."""
+        if value is not None and not isinstance(value, dict):
+            raise serializers.ValidationError("query_params must be a dictionary")
+        return value or {}
 

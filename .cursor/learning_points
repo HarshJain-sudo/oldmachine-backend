@@ -1,0 +1,10 @@
+# Learning point: API spec — define full response structure
+
+When documenting an API (e.g. OpenAPI/Swagger), define the full structure of the response, including nested objects and array items.
+
+- Do not leave list fields (e.g. `products_details`) as an empty array in the spec without describing the shape of each element.
+- Define schemas for: each item in arrays (e.g. product detail item, breadcrumb item), nested objects (e.g. `seller_details`, `location_details`), and the top-level response.
+- Use the response `schema=` in the OpenAPI Response so consumers and codegen know exact types (name, product_code, price, currency, seller_details, image_urls, etc.).
+- Keep the example payload aligned with the schema and with the actual API (e.g. no extra top-level `data` if the API does not return it).
+
+This improves clarity for frontend and API clients and avoids mismatches between spec and implementation.

@@ -224,6 +224,8 @@ class Product(models.Model):
             models.Index(fields=['product_code']),
             models.Index(fields=['category', 'is_active']),
             models.Index(fields=['seller']),
+            models.Index(fields=['price']),
+            models.Index(fields=['location']),
         ]
 
     def __str__(self):
@@ -264,7 +266,14 @@ class ProductImage(models.Model):
 
 
 class ProductSpecification(models.Model):
-    """Product specification model for storing product specs."""
+    """
+    Product specification model for storing product specs (key-value).
+
+    Buyer filters use canonical keys: 'condition' and 'year'. Seller portal
+    CategoryFormConfig should use these keys so marketplace filters work.
+    See olmachine_products.constants (PRODUCT_SPEC_CONDITION_KEY,
+    PRODUCT_SPEC_YEAR_KEY).
+    """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     product = models.ForeignKey(
@@ -286,6 +295,8 @@ class ProductSpecification(models.Model):
         unique_together = [['product', 'key']]
         indexes = [
             models.Index(fields=['product']),
+            models.Index(fields=['product', 'key']),
+            models.Index(fields=['product', 'key', 'value']),
         ]
 
     def __str__(self):
@@ -329,4 +340,42 @@ class UserCategoryView(models.Model):
     def __str__(self):
         """String representation of user category view."""
         return f"{self.user.phone_number} viewed {self.category.name}"
+
+
+class SavedSearch(models.Model):
+    """
+    Saved search for authenticated buyers. Stores filter/sort/pagination
+    so the frontend can restore the search (e.g. same body as product
+    listings search API).
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='saved_searches'
+    )
+    name = models.CharField(max_length=255, blank=True, null=True)
+    category_code = models.CharField(max_length=50, blank=True, null=True)
+    query_params = models.JSONField(
+        default=dict,
+        help_text='Filter/sort/search params (e.g. same as search API body)'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        """Meta options for SavedSearch."""
+
+        db_table = 'saved_searches'
+        verbose_name = 'Saved Search'
+        verbose_name_plural = 'Saved Searches'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['user', '-created_at']),
+        ]
+
+    def __str__(self):
+        """String representation of saved search."""
+        label = self.name or self.category_code or 'Saved search'
+        return f"SavedSearch {self.id} - {label}"
 
